@@ -15,6 +15,7 @@ type commandItem struct {
 
 // commands is the list of available commands
 var commands = []commandItem{
+	{name: "project", desc: "Select GitLab project to filter MRs"},
 	{name: "logout", desc: "Clear your current gitlab credentials to auth again"},
 }
 
@@ -50,9 +51,19 @@ func (m model) updateCommandMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // executeCommand executes the selected command
 func (m model) executeCommand(name string) (tea.Model, tea.Cmd) {
 	switch name {
+	case "project":
+		m.showCommandMenu = false
+		m.showProjectSelector = true
+		m.projectSelectorIndex = 0
+		m.projectFilter = ""
+		return m, nil
+
 	case "logout":
 		// Delete credentials from keyring
 		DeleteCredentials()
+
+		// Clear project from config
+		SaveSelectedProject(nil)
 
 		// Reset to auth screen
 		m.showCommandMenu = false
@@ -61,6 +72,8 @@ func (m model) executeCommand(name string) (tea.Model, tea.Cmd) {
 		m.focusIndex = 0
 		m.creds = nil
 		m.ready = false
+		m.selectedProject = nil
+		m.projects = nil
 
 		return m, nil
 	}
@@ -98,4 +111,19 @@ func (m model) overlayCommandMenu(background string) string {
 
 	// Overlay menu on top of background (centered)
 	return placeOverlayCenter(menuContent, background, m.width, m.height)
+}
+
+// overlayErrorModal renders the error modal as an overlay
+func (m model) overlayErrorModal(background string) string {
+	var b strings.Builder
+
+	b.WriteString(errorTitleStyle.Render("Error"))
+	b.WriteString("\n\n")
+	b.WriteString(m.errorModalMsg)
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("enter/esc: close"))
+
+	modalContent := renderModal(b.String(), ErrorModalConfig(), m.width)
+
+	return placeOverlayCenter(modalContent, background, m.width, m.height)
 }

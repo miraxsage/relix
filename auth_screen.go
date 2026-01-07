@@ -86,9 +86,9 @@ func (m model) updateAuth(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focusIndex == len(m.inputs) {
 			// Submit button focused
 			creds := Credentials{
-				GitLabURL: m.inputs[0].Value(),
-				Email:     m.inputs[1].Value(),
-				Token:     m.inputs[2].Value(),
+				GitLabURL: strings.TrimSpace(m.inputs[0].Value()),
+				Email:     strings.TrimSpace(m.inputs[1].Value()),
+				Token:     strings.TrimSpace(m.inputs[2].Value()),
 			}
 
 			// Basic validation
@@ -98,7 +98,8 @@ func (m model) updateAuth(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			return m, validateCredentialsCmd(creds)
+			m.loading = true
+			return m, tea.Batch(m.spinner.Tick, validateCredentialsCmd(creds))
 		}
 		// Move to next field on enter
 		m.focusIndex++
@@ -135,19 +136,20 @@ func (m model) updateInputs(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // viewAuth renders the auth screen
 func (m model) viewAuth() string {
-	var b strings.Builder
+	// Always build regular form content first to get exact dimensions
+	var formBuilder strings.Builder
 
 	// Form title
-	b.WriteString(formTitleStyle.Render("GitLab Authentication"))
-	b.WriteString("\n")
+	formBuilder.WriteString(formTitleStyle.Render("GitLab Authentication"))
+	formBuilder.WriteString("\n")
 
 	// Input fields
 	labels := []string{"GitLab URL", "Email", "Personal Access Token"}
 	for i, input := range m.inputs {
-		b.WriteString(inputLabelStyle.Render(labels[i]))
-		b.WriteString("\n")
-		b.WriteString(input.View())
-		b.WriteString("\n\n")
+		formBuilder.WriteString(inputLabelStyle.Render(labels[i]))
+		formBuilder.WriteString("\n")
+		formBuilder.WriteString(input.View())
+		formBuilder.WriteString("\n\n")
 	}
 
 	// Submit button
@@ -162,10 +164,55 @@ func (m model) viewAuth() string {
 			Bold(true)
 	}
 
-	b.WriteString(submitStyle.Render("Submit"))
+	formBuilder.WriteString(submitStyle.Render("Submit"))
 
-	// Wrap in form box
-	formContent := formStyle.Render(b.String())
+	// Get the regular form box to measure exact dimensions
+	regularFormContent := formStyle.Render(formBuilder.String())
+	formBoxWidth := lipgloss.Width(regularFormContent)
+	formBoxHeight := lipgloss.Height(regularFormContent)
+
+	var formContent string
+
+	// Show loading inside form box with exact same dimensions
+	if m.loading {
+		loadingText := m.spinner.View() + " Loading..."
+
+		// Create loading content centered in exact same box size
+		// Account for formStyle padding (1, 2) and border
+		innerWidth := formBoxWidth - 2 - 4  // subtract border (2) and horizontal padding (2*2)
+		innerHeight := formBoxHeight - 2 - 2 // subtract border (2) and vertical padding (1*2)
+
+		loadingLine := lipgloss.NewStyle().
+			Width(innerWidth).
+			Align(lipgloss.Center).
+			Foreground(lipgloss.Color("255")).
+			Render(loadingText)
+
+		// Build content with title and vertical centering for loading
+		var b strings.Builder
+		b.WriteString(formTitleStyle.Render("GitLab Authentication"))
+		b.WriteString("\n")
+
+		// Adjust for title height (title + newline = 2 lines)
+		contentHeight := innerHeight - 2
+		topPad := (contentHeight - 1) / 2
+		bottomPad := contentHeight - 1 - topPad
+
+		if topPad > 0 {
+			b.WriteString(strings.Repeat("\n", topPad))
+		}
+		b.WriteString(loadingLine)
+		if bottomPad > 0 {
+			b.WriteString(strings.Repeat("\n", bottomPad))
+		}
+
+		formContent = formStyle.
+			Width(formBoxWidth - 2). // subtract border width
+			Height(formBoxHeight - 2). // subtract border height
+			Render(b.String())
+	} else {
+		formContent = regularFormContent
+	}
 
 	// Center the form horizontally
 	formWidth := lipgloss.Width(formContent)
@@ -175,9 +222,12 @@ func (m model) viewAuth() string {
 		PaddingLeft(horizontalPadding).
 		Render(formContent)
 
-	// Help footer (centered)
-	helpText := "tab/↑↓: navigate • enter: submit/next • ctrl+c: quit"
-	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
+	// Help footer (centered) - hide during loading
+	var help string
+	if !m.loading {
+		helpText := "tab/↑↓: navigate • enter: submit/next • ctrl+c: quit"
+		help = helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
+	}
 
 	// Calculate heights
 	formHeight := lipgloss.Height(centeredForm)

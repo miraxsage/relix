@@ -27,8 +27,11 @@ func (m model) viewError() string {
 	b.WriteString(errorTitleStyle.Render("Error"))
 	b.WriteString("\n\n")
 	b.WriteString(m.errorMsg)
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("enter: back to form • ctrl+c: quit"))
 
-	errorContent := errorBoxStyle.Render(b.String())
+	// Use width-restricted modal
+	errorContent := renderModal(b.String(), ErrorModalConfig(), m.width)
 
 	// Center the error box horizontally
 	errorWidth := lipgloss.Width(errorContent)
@@ -38,21 +41,13 @@ func (m model) viewError() string {
 		PaddingLeft(horizontalPadding).
 		Render(errorContent)
 
-	// Help footer (centered)
-	helpText := "enter: back to form • ctrl+c: quit"
-	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
-
-	// Calculate heights
+	// Center vertically
 	errorHeight := lipgloss.Height(centeredError)
-	helpHeight := lipgloss.Height(help)
-
-	// Create spacer to push footer to bottom
-	spacerHeight := max(0, m.height-errorHeight-helpHeight)
-	topPadding := spacerHeight / 2
-	bottomPadding := spacerHeight - topPadding
+	topPadding := max(0, (m.height-errorHeight)/2)
+	bottomPadding := max(0, m.height-errorHeight-topPadding)
 
 	topSpacer := strings.Repeat("\n", topPadding)
 	bottomSpacer := strings.Repeat("\n", bottomPadding)
 
-	return topSpacer + centeredError + bottomSpacer + help
+	return topSpacer + centeredError + bottomSpacer
 }

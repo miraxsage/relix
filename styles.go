@@ -30,7 +30,7 @@ var (
 			MarginBottom(1)
 
 	inputLabelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
+			Foreground(lipgloss.Color("255"))
 
 	// Error styles
 	errorBoxStyle = lipgloss.NewStyle().

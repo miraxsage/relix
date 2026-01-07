@@ -2,38 +2,177 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
+
+// mrDelegate is a custom delegate for displaying MR items with 2-line titles
+type mrDelegate struct {
+	styles list.DefaultItemStyles
+}
+
+func newMRDelegate() mrDelegate {
+	styles := list.NewDefaultItemStyles()
+	styles.SelectedTitle = styles.SelectedTitle.
+		Foreground(lipgloss.Color("170")).
+		BorderLeftForeground(lipgloss.Color("170"))
+	styles.SelectedDesc = styles.SelectedDesc.
+		Foreground(lipgloss.Color("170")).
+		BorderLeftForeground(lipgloss.Color("170"))
+
+	return mrDelegate{styles: styles}
+}
+
+func (d mrDelegate) Height() int                             { return 3 }
+func (d mrDelegate) Spacing() int                            { return 1 }
+func (d mrDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+
+func (d mrDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	mr, ok := item.(mrListItem)
+	if !ok {
+		return
+	}
+
+	// Total available width from list
+	totalWidth := m.Width()
+	// Content width after accounting for left border/padding (3 chars: border + space + padding)
+	contentWidth := totalWidth - 3
+
+	// Wrap title to 2 lines
+	title := mr.Title()
+	titleLines := wrapText(title, contentWidth)
+	if len(titleLines) > 2 {
+		titleLines = titleLines[:2]
+		// Add ellipsis to second line if truncated
+		line2Width := ansi.StringWidth(titleLines[1])
+		if line2Width > 3 {
+			// Truncate and add ellipsis
+			runes := []rune(titleLines[1])
+			for ansi.StringWidth(string(runes)) > contentWidth-3 && len(runes) > 0 {
+				runes = runes[:len(runes)-1]
+			}
+			titleLines[1] = string(runes) + "..."
+		}
+	}
+
+	// Pad to always have 2 lines
+	for len(titleLines) < 2 {
+		titleLines = append(titleLines, "")
+	}
+
+	desc := mr.Description()
+	// Truncate description if too long
+	if ansi.StringWidth(desc) > contentWidth {
+		runes := []rune(desc)
+		for ansi.StringWidth(string(runes)) > contentWidth-3 && len(runes) > 0 {
+			runes = runes[:len(runes)-1]
+		}
+		desc = string(runes) + "..."
+	}
+
+	isSelected := index == m.Index()
+
+	// Pad each line to same width for consistent borders
+	padLine := func(s string, w int) string {
+		sw := ansi.StringWidth(s)
+		if sw >= w {
+			return s
+		}
+		return s + strings.Repeat(" ", w-sw)
+	}
+
+	line1 := padLine(titleLines[0], contentWidth)
+	line2 := padLine(titleLines[1], contentWidth)
+	line3 := padLine(desc, contentWidth)
+
+	if isSelected {
+		style := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder(), false, false, false, true).
+			BorderForeground(lipgloss.Color("170")).
+			Foreground(lipgloss.Color("170")).
+			Padding(0, 0, 0, 1)
+		fmt.Fprint(w, style.Render(line1+"\n"+line2+"\n"+line3))
+	} else {
+		style := lipgloss.NewStyle().
+			Padding(0, 0, 0, 2).
+			Foreground(lipgloss.Color("252"))
+		fmt.Fprint(w, style.Render(line1+"\n"+line2+"\n"+line3))
+	}
+}
+
+// wrapText wraps text to specified width using display width (handles Unicode)
+func wrapText(text string, width int) []string {
+	if width <= 0 {
+		width = 40
+	}
+
+	var lines []string
+	words := strings.Fields(text)
+
+	if len(words) == 0 {
+		return []string{""}
+	}
+
+	currentLine := words[0]
+	currentWidth := ansi.StringWidth(currentLine)
+
+	for _, word := range words[1:] {
+		wordWidth := ansi.StringWidth(word)
+		// +1 for space
+		if currentWidth+1+wordWidth <= width {
+			currentLine += " " + word
+			currentWidth += 1 + wordWidth
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = word
+			currentWidth = wordWidth
+		}
+	}
+	lines = append(lines, currentLine)
+
+	return lines
+}
 
 // initListScreen initializes the main list screen
 func (m *model) initListScreen() {
-	// Create list items
-	items := []list.Item{
-		listItem{title: "Introduction", desc: "Getting started guide"},
-		listItem{title: "Installation", desc: "How to install the app"},
-		listItem{title: "Configuration", desc: "Setup and configure"},
-		listItem{title: "Usage", desc: "Basic usage examples"},
-		listItem{title: "Advanced", desc: "Advanced features"},
-		listItem{title: "Plugins", desc: "Available plugins"},
-		listItem{title: "Themes", desc: "Customize appearance"},
-		listItem{title: "API Reference", desc: "API documentation"},
-		listItem{title: "FAQ", desc: "Frequently asked questions"},
-		listItem{title: "Changelog", desc: "Version history"},
-	}
-
-	// Create list
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+	// Create empty list initially
+	l := list.New([]list.Item{}, newMRDelegate(), 0, 0)
 	l.Title = "Open MRs"
 	l.SetShowHelp(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
+	l.SetShowStatusBar(false)
 
 	m.list = l
 	m.ready = false
+}
+
+// fetchMRs creates a command to fetch MRs from GitLab
+func (m *model) fetchMRs() tea.Cmd {
+	return func() tea.Msg {
+		if m.creds == nil {
+			return fetchMRsMsg{err: fmt.Errorf("no credentials")}
+		}
+
+		client := NewGitLabClient(m.creds.GitLabURL, m.creds.Token)
+
+		var mrs []*MergeRequestDetails
+		var err error
+
+		if m.selectedProject != nil {
+			mrs, err = client.GetProjectMergeRequests(m.selectedProject.ID)
+		} else {
+			mrs, err = client.GetOpenMergeRequests()
+		}
+
+		return fetchMRsMsg{mrs: mrs, err: err}
+	}
 }
 
 // updateListSize updates the list and viewport dimensions
@@ -64,6 +203,9 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "q", "esc":
 		return m, tea.Quit
+	case "r":
+		m.list.Title = "Open MRs (loading...)"
+		return m, m.fetchMRs()
 	}
 
 	// Handle list updates
@@ -83,46 +225,54 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// renderMarkdown renders the markdown content for the selected item
+// renderMarkdown renders the markdown content for the selected MR
 func (m model) renderMarkdown() string {
 	selected := m.list.SelectedItem()
 	if selected == nil {
+		return "No merge requests found.\n\nPress 'r' to refresh."
+	}
+
+	mr, ok := selected.(mrListItem)
+	if !ok {
 		return ""
 	}
 
-	i := selected.(listItem)
+	details := mr.MR()
 
+	// Build info table row
+	discussionInfo := fmt.Sprintf("%d/%d", details.DiscussionsResolved, details.DiscussionsTotal)
+	if details.DiscussionsTotal == 0 {
+		discussionInfo = "-"
+	}
+
+	changesCount := details.ChangesCount
+	if changesCount == "" {
+		changesCount = "-"
+	}
+
+	// Build markdown content
 	markdown := fmt.Sprintf(`# %s
 
-%s
+**%s (@%s)** | %s -> %s
 
-## Overview
-
-This is the **%s** section of reStitcher documentation.
-
-### Features
-
-- Feature one with *emphasis*
-- Feature two with **strong emphasis**
-- Feature three with `+"`code`"+`
-
-### Example
-
-`+"```go"+`
-package main
-
-func main() {
-    fmt.Println("Hello, reStitcher!")
-}
-`+"```"+`
-
-> This is a blockquote with some helpful information
-> about the current section.
+| Overview | Commits | Changes |
+|:--------:|:-------:|:-------:|
+| %s | %d | %s |
 
 ---
 
-*Last updated: 2025*
-`, i.title, i.desc, i.title)
+%s
+`,
+		details.Title,
+		details.Author.Name,
+		details.Author.Username,
+		details.SourceBranch,
+		details.TargetBranch,
+		discussionInfo,
+		details.CommitsCount,
+		changesCount,
+		details.Description,
+	)
 
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -140,7 +290,7 @@ func main() {
 // viewList renders the main list screen
 func (m model) viewList() string {
 	if !m.ready {
-		return "Initializing..."
+		return "Loading..."
 	}
 
 	sidebarWidth := m.width / 3
@@ -162,7 +312,7 @@ func (m model) viewList() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer (centered)
-	helpText := "/: commands • q/esc: quit • ↑/↓: navigate • scroll: pgup/pgdn"
+	helpText := "/: commands • q/esc: quit • ↑/↓: navigate • scroll: pgup/pgdn • r: refresh"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
