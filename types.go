@@ -14,7 +14,15 @@ const (
 	screenAuth
 	screenError
 	screenMain
+	screenEnvSelect
+	screenVersion
 )
+
+// Environment represents a deployment environment
+type Environment struct {
+	Name       string // Display name: DEVELOP, TEST, STAGE, PROD
+	BranchName string // Branch suffix: develop, testing, stable, master
+}
 
 // Credentials stored in keyring
 type Credentials struct {

@@ -311,6 +311,16 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc":
 		// Ignore q and esc - only ctrl+c quits
 		return m, nil
+	case "enter":
+		// Proceed to environment selection if MRs are selected
+		if len(m.selectedMRs) > 0 {
+			m.screen = screenEnvSelect
+			// Only reset index if no environment was previously selected
+			if m.selectedEnv == nil {
+				m.envSelectIndex = 0
+			}
+		}
+		return m, nil
 	case "o":
 		// Open selected MR in browser
 		selected := m.list.SelectedItem()
@@ -476,7 +486,7 @@ func (m model) viewList() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer (centered)
-	helpText := "↓/↑/j/k: nav • space: choose • o: open • r: reload • /: commands • Ctrl+c: quit"
+	helpText := "↓/↑/j/k: nav • space: choose • enter: proceed • o: open • r: reload • /: commands • Ctrl+c: quit"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)

@@ -36,6 +36,15 @@ type model struct {
 	loadingMRs  bool         // Loading modal for MRs
 	mrsLoaded   bool         // True after first MR load completes
 
+	// Environment selection screen
+	environments   []Environment
+	envSelectIndex int
+
+	// Version input screen
+	versionInput textinput.Model
+	selectedEnv  *Environment
+	versionError string
+
 	// Command menu
 	showCommandMenu  bool
 	commandMenuIndex int
@@ -66,6 +75,12 @@ func NewModel() model {
 		focusIndex: 0,
 		spinner:    s,
 		loading:    true, // Initial loading state
+		environments: []Environment{
+			{Name: "DEVELOP", BranchName: "develop"},
+			{Name: "TEST", BranchName: "testing"},
+			{Name: "STAGE", BranchName: "stable"},
+			{Name: "PROD", BranchName: "master"},
+		},
 	}
 }
 
@@ -117,6 +132,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateError(msg)
 		case screenMain:
 			return m.updateList(msg)
+		case screenEnvSelect:
+			return m.updateEnvSelect(msg)
+		case screenVersion:
+			return m.updateVersion(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -269,6 +288,10 @@ func (m model) View() string {
 		view = m.viewError()
 	case screenMain:
 		view = m.viewList()
+	case screenEnvSelect:
+		view = m.viewEnvSelect()
+	case screenVersion:
+		view = m.viewVersion()
 	}
 
 	// Overlay loading modal if loading MRs
