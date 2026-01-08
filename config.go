@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-const configFileName = ".reStitcher.conf"
+const configFileName = ".relix.conf"
 
 // getConfigPath returns the path to the config file
 func getConfigPath() (string, error) {
@@ -52,7 +52,7 @@ func SaveConfig(config *AppConfig) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o644)
 }
 
 // SaveSelectedProject saves the selected project to config

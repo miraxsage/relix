@@ -105,7 +105,7 @@ func stringPtr(s string) *string { return &s }
 // overlayLoadingModal renders a centered loading modal overlay
 func overlayLoadingModal(spinnerView, background string, width, height int) string {
 	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	content := loadingStyle.Render(spinnerView + " Loading...")
+	text := loadingStyle.Render(spinnerView + " Loading...")
 
 	config := ModalConfig{
 		Width:    ModalWidth{Value: 30, Percent: false},
@@ -113,6 +113,10 @@ func overlayLoadingModal(spinnerView, background string, width, height int) stri
 		MaxWidth: 40,
 		Style:    commandMenuStyle,
 	}
+
+	// Center the text within the modal content area
+	contentWidth := config.Width.Value - config.Style.GetHorizontalFrameSize()
+	content := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(text)
 
 	modalContent := renderModal(content, config, width)
 	return placeOverlayCenter(modalContent, background, width, height)

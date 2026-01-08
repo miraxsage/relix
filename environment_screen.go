@@ -24,13 +24,6 @@ var (
 			Foreground(lipgloss.Color("255")).
 			PaddingLeft(2)
 
-	envItemSelectedStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("170")).
-				Border(lipgloss.NormalBorder(), false, false, false, true).
-				BorderForeground(lipgloss.Color("170")).
-				PaddingLeft(1)
-
 	envPromptStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("255")).
 			Bold(true)
@@ -78,6 +71,17 @@ func getEnvHintStyle(envName string) lipgloss.Style {
 // getEnvBranchStyle returns the style for branch name in hint
 func getEnvBranchStyle(envName string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(getEnvBranchColor(envName)))
+}
+
+// getEnvSelectedStyle returns the style for selected environment item
+func getEnvSelectedStyle(envName string) lipgloss.Style {
+	color := getEnvBranchColor(envName)
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(color)).
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(lipgloss.Color(color)).
+		PaddingLeft(1)
 }
 
 // updateEnvSelect handles key events on the environment selection screen
@@ -189,7 +193,7 @@ func (m model) renderEnvSelection(width int) string {
 	// Environment list
 	for i, env := range m.environments {
 		if i == m.envSelectIndex {
-			sb.WriteString(envItemSelectedStyle.Render(env.Name))
+			sb.WriteString(getEnvSelectedStyle(env.Name).Render(env.Name))
 		} else {
 			sb.WriteString(envItemStyle.Render(env.Name))
 		}

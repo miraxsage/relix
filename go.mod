@@ -1,4 +1,4 @@
-module reStitcher
+module relix
 
 go 1.25.5
 

@@ -238,6 +238,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.showErrorModal = true
 			m.errorModalMsg = msg.err.Error()
+			// Update viewport to show hint even on error
+			if m.ready {
+				m.viewport.SetContent(m.renderMarkdown())
+			}
 		} else {
 			// Sort MRs: non-drafts first (by date newest first), then drafts (by date newest first)
 			sort.Slice(msg.mrs, func(i, j int) bool {

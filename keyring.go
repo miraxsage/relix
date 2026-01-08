@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	keyringService = "reStitcher"
+	keyringService = "relix"
 	keyringUser    = "gitlab-credentials"
 )
 
