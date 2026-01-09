@@ -79,7 +79,7 @@ func NewModel() model {
 
 	// Initialize settings textarea
 	ta := textarea.New()
-	ta.Placeholder = "Enter file patterns..."
+	ta.Placeholder = "Enter file paths patterns to exclude..."
 	ta.ShowLineNumbers = true
 	ta.SetHeight(6)
 	ta.SetWidth(50)

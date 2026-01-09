@@ -334,6 +334,12 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "r":
+		// If no project selected, open project selector instead
+		if m.selectedProject == nil {
+			m.showProjectSelector = true
+			m.loadingProjects = true
+			return m, tea.Batch(m.spinner.Tick, m.fetchProjects())
+		}
 		// Refresh MRs with loading modal
 		m.loadingMRs = true
 		return m, tea.Batch(m.spinner.Tick, m.fetchMRs())

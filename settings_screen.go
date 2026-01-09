@@ -18,7 +18,8 @@ const settingsReleaseFieldCount = 2 // textarea, save button
 // Invalid characters for file patterns (excluding glob special chars)
 var (
 	invalidPatternChars = regexp.MustCompile(`[<>:"|?\\]`)
-	invalidPatternOrder = regexp.MustCompile(`(^/?\*/\*\*)|(^/?\*\*/\*)|(\*/\*\*/?$)|(\*\*/\*/?$)|(/\*\*[^/])|([^/]\*\*/)|([^/]\*\*[^/])`)
+	tooWidePattern      = regexp.MustCompile(`^((/?\*\*?/?)|(/))$`)
+	invalidPatternOrder = regexp.MustCompile(`(^/?\*/\*\*)|(^/?\*\*/\*)|(\*/\*\*/?$)|(\*\*/\*/?$)|(/\*\*([^/]|$))|(([^/]|^)\*\*/)|(([^/]|^)\*\*([^/]|$))`)
 )
 
 // updateSettings handles key events when settings modal is open
@@ -98,6 +99,14 @@ func (m *model) validatePatterns() string {
 		// Check for max line length
 		if len(line) > 80 {
 			return "Line " + itoa(i+1) + ": exceeds maximum length of 80 characters"
+		}
+
+		if strings.Contains(line, "//") {
+			return "Line " + itoa(i+1) + ": empty folders // are not allowed"
+		}
+
+		if tooWidePattern.MatchString(line) {
+			return "Line " + itoa(i+1) + ": it's too wide pattern that will affect many unintended files/folders"
 		}
 
 		// Check for invalid characters
@@ -237,9 +246,10 @@ func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 	b.WriteString("\n")
 
 	// Description (same color as MR list item description - 244)
-	desc := "Enumerate file patterns to exclude from release, one per line.\n" +
-		"/**/ - any folder, * - any char sequence\n" +
-		"Examples: /node_modules/**/*.js, /file-*.ts"
+	desc := "Enumerate file paths patterns to exclude from release, one per line. " +
+		"/**/ - any folders, * - any char sequence.\n" +
+		"e.g. garbage/ - any whole \"garbage\" folder, /garbage/ - whole \"garbage\" folder at project root, " +
+		"/node_modules/**/*.js, /file-*.ts, .gitlab-ci.yml"
 	b.WriteString(settingsDescStyle.Render(desc))
 	b.WriteString("\n\n")
 

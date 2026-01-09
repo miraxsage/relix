@@ -27,7 +27,10 @@ func LoadConfig() (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &AppConfig{}, nil
+			// Return default config with default excluded file patterns
+			return &AppConfig{
+				ExcludePatterns: ".gitlab-ci.yml\nsprite.gen.ts",
+			}, nil
 		}
 		return nil, err
 	}
