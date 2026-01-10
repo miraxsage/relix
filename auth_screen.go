@@ -172,7 +172,8 @@ func (m model) viewAuth() string {
 
 	if m.focusIndex == len(m.inputs) {
 		submitStyle = submitStyle.
-			Background(lipgloss.Color("205")).
+			Background(lipgloss.Color("62")).
+			Foreground(lipgloss.Color("255")).
 			Bold(true)
 	}
 

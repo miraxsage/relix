@@ -161,7 +161,7 @@ func (m model) renderSelectedMRsSidebar(width int) string {
 	// Count selected MRs
 	selectedCount := len(m.selectedMRs)
 
-	title := fmt.Sprintf(" MRs to release (%d)", selectedCount)
+	title := fmt.Sprintf(" MRs to release (%d) ", selectedCount)
 	sb.WriteString(" " + envTitleStepStyle.Render("[1]") +
 		envTitleStyle.Render(title))
 	sb.WriteString("\n\n")

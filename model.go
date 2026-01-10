@@ -46,6 +46,9 @@ type model struct {
 	selectedEnv  *Environment
 	versionError string
 
+	// Confirmation screen
+	confirmViewport viewport.Model
+
 	// Command menu
 	showCommandMenu  bool
 	commandMenuIndex int
@@ -182,6 +185,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateEnvSelect(msg)
 		case screenVersion:
 			return m.updateVersion(msg)
+		case screenConfirm:
+			return m.updateConfirm(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -190,6 +195,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.screen == screenMain {
 			m.updateListSize()
+		}
+		if m.screen == screenConfirm {
+			m.initConfirmViewport()
 		}
 
 	case checkCredsMsg:
@@ -351,6 +359,8 @@ func (m model) View() string {
 		view = m.viewEnvSelect()
 	case screenVersion:
 		view = m.viewVersion()
+	case screenConfirm:
+		view = m.viewConfirm()
 	}
 
 	// Overlay loading modal if loading MRs

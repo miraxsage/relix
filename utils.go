@@ -102,6 +102,8 @@ func maxLineWidth(lines []string) int {
 
 func stringPtr(s string) *string { return &s }
 
+func boolPtr(b bool) *bool { return &b }
+
 // overlayLoadingModal renders a centered loading modal overlay
 func overlayLoadingModal(spinnerView, background string, width, height int) string {
 	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))

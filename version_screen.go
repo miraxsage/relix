@@ -16,7 +16,7 @@ var versionRegex = regexp.MustCompile(`^\d+(\.\d+){1,3}$`)
 // Styles for version input screen
 var (
 	versionInputStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255"))
+		Foreground(lipgloss.Color("255"))
 )
 
 // initVersionInput initializes the version text input
@@ -68,8 +68,10 @@ func (m model) updateVersion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.versionError = "Invalid version format. Use: X.Y, X.Y.Z, or X.Y.Z.W"
 			return m, nil
 		}
-		// Version is valid - proceed to next step (not implemented yet)
+		// Version is valid - proceed to confirmation screen
 		m.versionError = ""
+		m.screen = screenConfirm
+		m.initConfirmViewport()
 		return m, nil
 	}
 
@@ -144,8 +146,8 @@ func (m model) renderDualSidebar(width int, availableHeight int) string {
 
 	// MRs sidebar content: title line + blank + branches
 	// Env sidebar content: title line + blank + env value
-	minEnvContentHeight := 4  // title + blank + env + padding
-	mrsHeaderLines := 3       // title line + blank line + some spacing
+	minEnvContentHeight := 4 // title + blank + env + padding
+	mrsHeaderLines := 3      // title line + blank line + some spacing
 
 	// Calculate ideal MRs content height
 	idealMrsContentHeight := mrsHeaderLines + len(branches)
@@ -184,7 +186,7 @@ func (m model) renderDualSidebar(width int, availableHeight int) string {
 func (m model) renderMRsSidebarSection(width int, contentHeight int, branches []string) string {
 	var sb strings.Builder
 
-	title := fmt.Sprintf(" MRs to release (%d)", len(branches))
+	title := fmt.Sprintf(" MRs to release (%d) ", len(branches))
 	sb.WriteString(" " + envTitleStepStyle.Render("[1]") +
 		envTitleStyle.Render(title))
 	sb.WriteString("\n\n")
@@ -235,7 +237,7 @@ func (m model) renderEnvSidebarSection(width int, contentHeight int) string {
 	var sb strings.Builder
 
 	sb.WriteString(" " + envTitleStepStyle.Render("[2]") +
-		envTitleStyle.Render(" Environment"))
+		envTitleStyle.Render(" Environment "))
 	sb.WriteString("\n\n")
 
 	// Show selected environment with styled background

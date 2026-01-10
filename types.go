@@ -16,6 +16,7 @@ const (
 	screenMain
 	screenEnvSelect
 	screenVersion
+	screenConfirm
 )
 
 // Environment represents a deployment environment
