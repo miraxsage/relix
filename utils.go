@@ -104,6 +104,15 @@ func stringPtr(s string) *string { return &s }
 
 func boolPtr(b bool) *bool { return &b }
 
+// sidebarWidth returns sidebar width: max(36, terminalWidth/3)
+func sidebarWidth(terminalWidth int) int {
+	third := terminalWidth / 3
+	if third < 36 {
+		return third
+	}
+	return 36
+}
+
 // overlayLoadingModal renders a centered loading modal overlay
 func overlayLoadingModal(spinnerView, background string, width, height int) string {
 	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))

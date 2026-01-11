@@ -95,8 +95,8 @@ func (m model) viewVersion() string {
 		return ""
 	}
 
-	sidebarWidth := m.width / 3
-	contentWidth := m.width - sidebarWidth - 4
+	sidebarW := sidebarWidth(m.width)
+	contentWidth := m.width - sidebarW - 4
 
 	// Content height (same as environment screen)
 	contentHeight := m.height - 4
@@ -105,7 +105,7 @@ func (m model) viewVersion() string {
 	totalHeight := contentHeight + 2
 
 	// Build dual sidebar (pass total rendered height)
-	sidebar := m.renderDualSidebar(sidebarWidth, totalHeight)
+	sidebar := m.renderDualSidebar(sidebarW, totalHeight)
 
 	// Build content - version input
 	contentContent := m.renderVersionInput(contentWidth - 4)
@@ -241,9 +241,16 @@ func (m model) renderEnvSidebarSection(width int, contentHeight int) string {
 	sb.WriteString("\n\n")
 
 	// Show selected environment with styled background
+	// Fall back to release state if selectedEnv is nil
+	var envName string
 	if m.selectedEnv != nil {
-		envStyle := getEnvHintStyle(m.selectedEnv.Name)
-		sb.WriteString(" " + envStyle.Render(" "+m.selectedEnv.Name+" "))
+		envName = m.selectedEnv.Name
+	} else if m.releaseState != nil {
+		envName = m.releaseState.Environment.Name
+	}
+	if envName != "" {
+		envStyle := getEnvHintStyle(envName)
+		sb.WriteString(" " + envStyle.Render(" "+envName+" "))
 	}
 
 	// Wrap in bordered box (Height is content height, border adds 2 more lines)

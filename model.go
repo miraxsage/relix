@@ -15,9 +15,10 @@ import (
 
 // model is the main application model
 type model struct {
-	screen screen
-	width  int
-	height int
+	screen  screen
+	width   int
+	height  int
+	program *tea.Program // Reference for sending async messages
 
 	// Auth form
 	inputs     []textinput.Model
@@ -72,6 +73,18 @@ type model struct {
 	settingsExcludePatterns textarea.Model
 	settingsError           string // Validation error message
 	settingsFocusIndex      int    // 0 = textarea, 1 = save button
+
+	// Release execution screen
+	releaseState          *ReleaseState
+	releaseViewport       viewport.Model
+	releaseOutputBuffer   []string
+	releaseButtonIndex    int
+	releaseButtons        []ReleaseButton
+	releaseRunning        bool
+	releaseExecutor       *GitExecutor
+	showAbortConfirm      bool
+	abortConfirmIndex     int  // 0 = Yes, 1 = Cancel
+	releaseViewportFocus  bool // true when viewport is focused
 }
 
 // NewModel creates a new application model
@@ -112,7 +125,11 @@ func NewModel() model {
 
 // Init initializes the model
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.spinner.Tick, checkStoredCredentials())
+	return tea.Batch(
+		textinput.Blink,
+		m.spinner.Tick,
+		checkStoredCredentials(),
+	)
 }
 
 // closeAllModals closes all open modals
@@ -187,6 +204,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateVersion(msg)
 		case screenConfirm:
 			return m.updateConfirm(msg)
+		case screenRelease:
+			return m.updateRelease(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -199,11 +218,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == screenConfirm {
 			m.initConfirmViewport()
 		}
+		if m.screen == screenRelease {
+			m.initReleaseScreen()
+			if m.releaseExecutor != nil {
+				m.releaseExecutor.Resize(uint16(m.height-10), uint16(m.width-sidebarWidth(m.width)-10))
+			}
+		}
 
 	case checkCredsMsg:
 		m.loading = false
 		if msg.creds != nil {
 			m.creds = msg.creds
+
+			// Check for existing release state first
+			if releaseState, err := LoadReleaseState(); err == nil && releaseState != nil {
+				// Resume existing release
+				m.initListScreen()
+				m.updateListSize()
+				// Load project info for release
+				if config, err := LoadConfig(); err == nil && config.SelectedProjectID != 0 {
+					m.selectedProject = &Project{
+						ID:                config.SelectedProjectID,
+						Name:              config.SelectedProjectShortName,
+						PathWithNamespace: config.SelectedProjectPath,
+						NameWithNamespace: config.SelectedProjectName,
+					}
+				}
+				return m, m.resumeRelease(releaseState)
+			}
+
 			m.screen = screenMain
 			m.initListScreen()
 			m.updateListSize()
@@ -230,7 +273,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenAuth
 
 	case spinner.TickMsg:
-		if m.loading || m.loadingProjects || m.loadingMRs {
+		if m.loading || m.loadingProjects || m.loadingMRs || m.releaseRunning {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -322,6 +365,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(m.renderMarkdown())
 			}
 		}
+
+	case existingReleaseMsg:
+		if msg.state != nil {
+			// Found existing release - resume it
+			return m, m.resumeRelease(msg.state)
+		}
+
+	case releaseOutputMsg:
+		m.appendReleaseOutput(msg.line)
+		return m, nil
+
+	case releaseStepCompleteMsg:
+		return m.handleReleaseStepComplete(msg)
+
+	case releaseMRCreatedMsg:
+		return m.handleMRCreated(msg)
+
+	case setProgramMsg:
+		m.program = msg.program
+		return m, nil
 	}
 
 	// Update inputs if on auth screen (for non-KeyMsg messages like Blink)
@@ -361,6 +424,8 @@ func (m model) View() string {
 		view = m.viewVersion()
 	case screenConfirm:
 		view = m.viewConfirm()
+	case screenRelease:
+		view = m.viewRelease()
 	}
 
 	// Overlay loading modal if loading MRs

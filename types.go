@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
 )
 
@@ -17,6 +18,7 @@ const (
 	screenEnvSelect
 	screenVersion
 	screenConfirm
+	screenRelease
 )
 
 // Environment represents a deployment environment
@@ -129,4 +131,87 @@ type AppConfig struct {
 
 	// Release settings
 	ExcludePatterns string `json:"exclude_patterns"` // File patterns to exclude from release, one per line
+}
+
+// ReleaseStep represents a step in the release process
+type ReleaseStep int
+
+const (
+	ReleaseStepIdle ReleaseStep = iota
+	ReleaseStepCheckoutRoot    // Step 1: git checkout root && git pull && git checkout -B release/rpb-{ver}-root
+	ReleaseStepMergeBranches   // Step 2: git merge origin/{branch} for each MR
+	ReleaseStepCheckoutEnv     // Step 3: git checkout {env} && git pull && git checkout -B release/rpb-{ver}-{env}
+	ReleaseStepCopyContent     // Step 4: git rm -rf . && git checkout content && exclude files && git commit
+	ReleaseStepWaitForMR       // Step 5: waiting for user to press "Create MR" button
+	ReleaseStepPushAndCreateMR // Step 6: git push && create GitLab MR
+	ReleaseStepComplete        // Done
+)
+
+// ReleaseError holds error details for a failed step
+type ReleaseError struct {
+	Step    ReleaseStep `json:"step"`
+	Message string      `json:"message"`
+}
+
+// ReleaseState represents the persistent state of an in-progress release
+type ReleaseState struct {
+	// Selection info
+	SelectedMRIIDs []int       `json:"selected_mr_iids"`
+	MRBranches     []string    `json:"mr_branches"` // Source branches in merge order
+	Environment    Environment `json:"environment"`
+	Version        string      `json:"version"`
+	ProjectID      int         `json:"project_id"`
+
+	// Progress tracking
+	CurrentStep     ReleaseStep `json:"current_step"`
+	LastSuccessStep ReleaseStep `json:"last_success_step"`
+	CurrentMRIndex  int         `json:"current_mr_index"` // For step 2: which MR we're merging
+	MergedBranches  []string    `json:"merged_branches"`  // Successfully merged branches
+
+	// Error info
+	LastError   *ReleaseError `json:"last_error,omitempty"`
+	ErrorOutput string        `json:"error_output,omitempty"` // Last 500 lines of output on error
+
+	// Created MR info (after step 6)
+	CreatedMRURL string `json:"created_mr_url,omitempty"`
+	CreatedMRIID int    `json:"created_mr_iid,omitempty"`
+
+	// Working directory
+	WorkDir string `json:"work_dir"` // Project root path
+}
+
+// ReleaseButton represents an action button in the release screen
+type ReleaseButton int
+
+const (
+	ReleaseButtonAbort ReleaseButton = iota
+	ReleaseButtonRetry
+	ReleaseButtonCreateMR
+	ReleaseButtonComplete
+	ReleaseButtonOpen
+)
+
+// Bubble Tea messages for release execution
+type releaseOutputMsg struct {
+	line string
+}
+
+type releaseStepCompleteMsg struct {
+	step   ReleaseStep
+	err    error
+	output string
+}
+
+type existingReleaseMsg struct {
+	state *ReleaseState
+}
+
+type releaseMRCreatedMsg struct {
+	url string
+	iid int
+	err error
+}
+
+type setProgramMsg struct {
+	program *tea.Program
 }

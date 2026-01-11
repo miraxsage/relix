@@ -6,15 +6,41 @@ import (
 	"path/filepath"
 )
 
-const configFileName = ".relix.conf"
+const (
+	configDir       = ".relix"
+	configFileName  = "config.json"
+	releaseFileName = "release.json"
+)
 
-// getConfigPath returns the path to the config file
-func getConfigPath() (string, error) {
+// getConfigDir returns the path to the config directory, creating it if needed
+func getConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, configFileName), nil
+	dir := filepath.Join(home, configDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// getConfigPath returns the path to the config file
+func getConfigPath() (string, error) {
+	dir, err := getConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, configFileName), nil
+}
+
+// getReleaseStatePath returns the path to the release state file
+func getReleaseStatePath() (string, error) {
+	dir, err := getConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, releaseFileName), nil
 }
 
 // LoadConfig loads the application configuration from file
@@ -78,4 +104,53 @@ func SaveSelectedProject(project *Project) error {
 	}
 
 	return SaveConfig(config)
+}
+
+// LoadReleaseState loads the release state from file
+func LoadReleaseState() (*ReleaseState, error) {
+	path, err := getReleaseStatePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // No release in progress
+		}
+		return nil, err
+	}
+
+	var state ReleaseState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+// SaveReleaseState saves the release state to file
+func SaveReleaseState(state *ReleaseState) error {
+	path, err := getReleaseStatePath()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+// ClearReleaseState removes the release state file
+func ClearReleaseState() error {
+	path, err := getReleaseStatePath()
+	if err != nil {
+		return err
+	}
+	err = os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil // Already cleared
+	}
+	return err
 }

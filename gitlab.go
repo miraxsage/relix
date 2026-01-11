@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -307,4 +309,47 @@ func extractProjectPath(webURL string) string {
 	}
 
 	return path[slashIdx+1:]
+}
+
+// CreateMergeRequest creates a new merge request in GitLab
+func (c *GitLabClient) CreateMergeRequest(projectID int, sourceBranch, targetBranch, title, description string) (*MergeRequest, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests", c.baseURL, projectID)
+
+	payload := map[string]interface{}{
+		"source_branch": sourceBranch,
+		"target_branch": targetBranch,
+		"title":         title,
+		"description":   description,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("network error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 201 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var mr MergeRequest
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &mr, nil
 }

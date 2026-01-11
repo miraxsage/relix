@@ -123,18 +123,18 @@ func (m model) viewEnvSelect() string {
 		return ""
 	}
 
-	sidebarWidth := m.width / 3
-	contentWidth := m.width - sidebarWidth - 4
+	sidebarW := sidebarWidth(m.width)
+	contentWidth := m.width - sidebarW - 4
 
 	// Build sidebar content - list of selected MRs
-	sidebarContent := m.renderSelectedMRsSidebar(sidebarWidth - 4)
+	sidebarContent := m.renderSelectedMRsSidebar(sidebarW - 4)
 
 	// Build content - environment selection
 	contentContent := m.renderEnvSelection(contentWidth - 4)
 
 	// Render sidebar
 	sidebar := sidebarStyle.
-		Width(sidebarWidth).
+		Width(sidebarW).
 		Height(m.height - 4).
 		Render(sidebarContent)
 

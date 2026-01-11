@@ -24,8 +24,8 @@ func (m *model) initConfirmViewport() {
 		return
 	}
 
-	sidebarWidth := m.width / 3
-	contentWidth := m.width - sidebarWidth - 4
+	sidebarW := sidebarWidth(m.width)
+	contentWidth := m.width - sidebarW - 4
 	contentHeight := m.height - 4
 
 	// Button takes 2 lines: 1 margin top + 1 button
@@ -44,8 +44,8 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenVersion
 		return m, nil
 	case "enter":
-		// TODO: Start the release process
-		return m, nil
+		// Start the release process
+		return m.startRelease()
 	}
 
 	// Handle viewport scrolling
@@ -60,8 +60,8 @@ func (m model) viewConfirm() string {
 		return ""
 	}
 
-	sidebarWidth := m.width / 3
-	contentWidth := m.width - sidebarWidth - 4
+	sidebarW := sidebarWidth(m.width)
+	contentWidth := m.width - sidebarW - 4
 
 	// Content height (same as other screens)
 	contentHeight := m.height - 4
@@ -70,7 +70,7 @@ func (m model) viewConfirm() string {
 	totalHeight := contentHeight + 2
 
 	// Build triple sidebar (pass total rendered height)
-	sidebar := m.renderTripleSidebar(sidebarWidth, totalHeight)
+	sidebar := m.renderTripleSidebar(sidebarW, totalHeight)
 
 	// Build content - confirmation info with button
 	contentContent := m.renderConfirmContent(contentWidth-4, contentHeight)
@@ -93,13 +93,19 @@ func (m model) viewConfirm() string {
 
 // renderTripleSidebar renders MRs, Environment, and Version sidebars stacked vertically
 func (m model) renderTripleSidebar(width int, availableHeight int) string {
-	// Collect branch names from selected MRs
-	items := m.list.Items()
+	// Collect branch names from selected MRs or release state
 	var branches []string
-	for _, item := range items {
-		if mr, ok := item.(mrListItem); ok {
-			if m.selectedMRs[mr.MR().IID] {
-				branches = append(branches, mr.MR().SourceBranch)
+	if m.releaseState != nil && len(m.releaseState.MRBranches) > 0 {
+		// Use branches from release state (for resume scenario)
+		branches = m.releaseState.MRBranches
+	} else {
+		// Get branches from list
+		items := m.list.Items()
+		for _, item := range items {
+			if mr, ok := item.(mrListItem); ok {
+				if m.selectedMRs[mr.MR().IID] {
+					branches = append(branches, mr.MR().SourceBranch)
+				}
 			}
 		}
 	}
@@ -165,8 +171,11 @@ func (m model) renderVersionSidebarSection(width int, contentHeight int) string 
 		envTitleStyle.Render(" Version "))
 	sb.WriteString("\n\n")
 
-	// Show version number
+	// Show version number (fall back to release state if input is empty)
 	version := m.versionInput.Value()
+	if version == "" && m.releaseState != nil {
+		version = m.releaseState.Version
+	}
 	if version != "" {
 		versionStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("255")).
