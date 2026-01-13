@@ -78,6 +78,9 @@ func (m model) updateProjectSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Save to config
 			SaveSelectedProject(&selected)
 
+			// Reset list screen state (clears selections and hides old content)
+			m.initListScreen()
+
 			// Refresh MRs for the new project with loading modal
 			m.loadingMRs = true
 			return m, tea.Batch(m.spinner.Tick, m.fetchMRs())

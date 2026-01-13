@@ -276,6 +276,7 @@ func (m *model) initListScreen() {
 
 	m.list = l
 	m.ready = false
+	m.mrsLoaded = false
 }
 
 // fetchMRs creates a command to fetch MRs from GitLab

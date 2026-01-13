@@ -104,13 +104,13 @@ func stringPtr(s string) *string { return &s }
 
 func boolPtr(b bool) *bool { return &b }
 
-// sidebarWidth returns sidebar width: max(36, terminalWidth/3)
+// sidebarWidth returns sidebar width: max(32, terminalWidth/3)
 func sidebarWidth(terminalWidth int) int {
 	third := terminalWidth / 3
-	if third < 36 {
+	if third < 32 {
 		return third
 	}
-	return 36
+	return 32
 }
 
 // overlayLoadingModal renders a centered loading modal overlay

@@ -570,7 +570,7 @@ func (m model) renderReleaseStatus(width int) string {
 
 	case ReleaseStepComplete:
 		status = fmt.Sprintf("Release is %s\nPress %s to open MR link, or press\n%s to exit this release screen",
-			releaseSuccessGreenStyle.Render("SUCCESSFULLY COMPLETED"),
+			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPLETED "),
 			releaseActiveTextStyle.Render("Open"),
 			releaseActiveTextStyle.Render("Complete"),
 		)
@@ -1206,40 +1206,40 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 			m.releaseExecutor = nil
 		}
 
-		        // Delete remote branch if requested
-				if deleteRemote {
-					cmds := NewReleaseCommands(workDir, version, &m.releaseState.Environment, nil, nil)
-					remoteBranch := cmds.EnvReleaseBranch()
-					deleteCmd := fmt.Sprintf("cd %q && git push origin --delete %s", workDir, remoteBranch)
-					exec := NewGitExecutor(workDir, nil)
-					exec.RunCommand(deleteCmd)
-					exec.Close()
-				}
-		
-				// Reset to clean state
-				cmd := fmt.Sprintf("cd %q && git reset --hard && git checkout root", workDir)
-				exec := NewGitExecutor(workDir, nil)
-				exec.RunCommand(cmd)
-				exec.Close()
-		
-				// Delete created branches
-				DeleteLocalBranches(workDir, version, envBranch)
-			}
-		
-			// Clear state
-			ClearReleaseState()
-			m.releaseState = nil
-			m.releaseOutputBuffer = nil
-			m.releaseCurrentScreen = ""
-			m.releaseRunning = false
-		
-			// Reset selections for next release
-			(&m).initListScreen()
-			(&m).updateListSize()
-			m.selectedEnv = nil
-			m.envSelectIndex = 0
-			m.versionInput.SetValue("")
-			m.versionError = ""
+		// Delete remote branch if requested
+		if deleteRemote {
+			cmds := NewReleaseCommands(workDir, version, &m.releaseState.Environment, nil, nil)
+			remoteBranch := cmds.EnvReleaseBranch()
+			deleteCmd := fmt.Sprintf("cd %q && git push origin --delete %s", workDir, remoteBranch)
+			exec := NewGitExecutor(workDir, nil)
+			exec.RunCommand(deleteCmd)
+			exec.Close()
+		}
+
+		// Reset to clean state
+		cmd := fmt.Sprintf("cd %q && git reset --hard && git checkout root", workDir)
+		exec := NewGitExecutor(workDir, nil)
+		exec.RunCommand(cmd)
+		exec.Close()
+
+		// Delete created branches
+		DeleteLocalBranches(workDir, version, envBranch)
+	}
+
+	// Clear state
+	ClearReleaseState()
+	m.releaseState = nil
+	m.releaseOutputBuffer = nil
+	m.releaseCurrentScreen = ""
+	m.releaseRunning = false
+
+	// Reset selections for next release
+	(&m).initListScreen()
+	(&m).updateListSize()
+	m.selectedEnv = nil
+	m.envSelectIndex = 0
+	m.versionInput.SetValue("")
+	m.versionError = ""
 
 	// Go back to main screen and reload MRs
 	m.screen = screenMain
