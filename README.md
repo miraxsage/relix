@@ -20,6 +20,13 @@ Relix is a powerful, interactive terminal user interface (TUI) tool designed to 
     -   Opens the final Merge Request for the release.
 -   **Resumable Sessions**: State is saved automatically. If a conflict occurs or the app is closed, you can resume exactly where you left off.
 -   **Configurable Exclusions**: Define file patterns to automatically exclude from release builds.
+  
+<img width="800" height="auto" alt="1" src="https://github.com/user-attachments/assets/f7c17425-76ea-40e6-8be8-068e40caf09b" />
+<img width="800" height="auto" alt="2" src="https://github.com/user-attachments/assets/21a1c709-6765-420a-96f8-6ad62f07f344" />
+<img width="800" height="auto" alt="3" src="https://github.com/user-attachments/assets/7fc9b98f-a943-4f01-b7da-cb5c276e422f" />
+<img width="800" height="auto" alt="4" src="https://github.com/user-attachments/assets/662dd777-0de7-4bae-b692-ba3573a1c53d" />
+<img width="800" height="auto" alt="5" src="https://github.com/user-attachments/assets/b7ee6141-629d-46f6-9333-d4917c344ae9" />
+<img width="800" height="auto" alt="6" src="https://github.com/user-attachments/assets/0f922e06-76e7-45cf-8ca5-71c55a75fc25" />
 
 ## 🛠️ Installation
 
