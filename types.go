@@ -17,6 +17,8 @@ const (
 	screenMain
 	screenEnvSelect
 	screenVersion
+	screenSourceBranch
+	screenRootMerge
 	screenConfirm
 	screenRelease
 )
@@ -162,6 +164,8 @@ type ReleaseState struct {
 	MRBranches     []string    `json:"mr_branches"` // Source branches in merge order
 	Environment    Environment `json:"environment"`
 	Version        string      `json:"version"`
+	SourceBranch   string      `json:"source_branch"` // Source branch for accumulating MRs (e.g. release/rpb_1.0.0_root)
+	RootMerge      bool        `json:"root_merge"`    // Whether to merge release to root and root to develop
 	ProjectID      int         `json:"project_id"`
 
 	// Progress tracking

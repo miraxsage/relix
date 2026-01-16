@@ -34,8 +34,13 @@ func (m *model) initConfirmViewport() {
 func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "u":
-		// Go back to version input
-		m.screen = screenVersion
+		// Go back to root merge screen, restore button index based on selection
+		m.screen = screenRootMerge
+		if m.rootMergeSelection {
+			m.rootMergeButtonIndex = 0
+		} else {
+			m.rootMergeButtonIndex = 1
+		}
 		return m, nil
 	case "enter":
 		// Start the release process
@@ -63,8 +68,8 @@ func (m model) viewConfirm() string {
 	// Total rendered height for sidebar/content (content height + 2 for border)
 	totalHeight := contentHeight + 2
 
-	// Build triple sidebar (pass total rendered height)
-	sidebar := m.renderTripleSidebar(sidebarW, totalHeight)
+	// Build five sidebar (pass total rendered height)
+	sidebar := m.renderFiveSidebar(sidebarW, totalHeight)
 
 	// Build content - confirmation info with button
 	contentContent := m.renderConfirmContent(contentWidth-4, contentHeight)
@@ -154,6 +159,90 @@ func (m model) renderTripleSidebar(width int, availableHeight int) string {
 	versionSidebar := m.renderVersionSidebarSection(width, versionContentHeight)
 
 	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar)
+}
+
+// renderFiveSidebar renders all 5 sidebars: MRs, Environment, Version, Source branch, and Root merge
+func (m model) renderFiveSidebar(width int, availableHeight int) string {
+	// Collect branch names from selected MRs or release state
+	var branches []string
+	if m.releaseState != nil && len(m.releaseState.MRBranches) > 0 {
+		// Use branches from release state (for resume scenario)
+		branches = m.releaseState.MRBranches
+	} else {
+		// Get branches from list
+		items := m.list.Items()
+		for _, item := range items {
+			if mr, ok := item.(mrListItem); ok {
+				if m.selectedMRs[mr.MR().IID] {
+					branches = append(branches, mr.MR().SourceBranch)
+				}
+			}
+		}
+	}
+
+	// Each bordered box adds 2 lines for top/bottom border
+	// We have 5 boxes, so total border overhead is 10 lines
+	totalContentHeight := availableHeight - 10
+
+	// Minimum heights for sidebars
+	minEnvContentHeight := 4          // title + blank + env + padding
+	minVersionContentHeight := 4      // title + blank + version + padding
+	minSourceBranchContentHeight := 4 // title + blank + branch + padding
+	minRootMergeContentHeight := 4    // title + blank + status + padding
+	mrsHeaderLines := 3               // title line + blank line + some spacing
+
+	// Calculate ideal MRs content height
+	idealMrsContentHeight := mrsHeaderLines + len(branches)
+
+	// Target: each sidebar gets 1/5 of content height
+	fifthContentHeight := totalContentHeight / 5
+
+	// Start with equal distribution
+	mrsContentHeight := fifthContentHeight
+	envContentHeight := fifthContentHeight
+	versionContentHeight := fifthContentHeight
+	sourceBranchContentHeight := fifthContentHeight
+	rootMergeContentHeight := totalContentHeight - mrsContentHeight - envContentHeight - versionContentHeight - sourceBranchContentHeight
+
+	// If branches don't fit in 1/5, try to expand MRs sidebar
+	if idealMrsContentHeight > fifthContentHeight {
+		// Calculate max MRs content height (leaving minimum for other sidebars)
+		maxMrsContentHeight := totalContentHeight - minEnvContentHeight - minVersionContentHeight - minSourceBranchContentHeight - minRootMergeContentHeight
+		if idealMrsContentHeight <= maxMrsContentHeight {
+			// All branches fit if we shrink other sidebars to minimum
+			mrsContentHeight = idealMrsContentHeight
+			// Distribute remaining space equally between other sidebars
+			remaining := totalContentHeight - mrsContentHeight
+			envContentHeight = remaining / 4
+			versionContentHeight = remaining / 4
+			sourceBranchContentHeight = remaining / 4
+			rootMergeContentHeight = remaining - envContentHeight - versionContentHeight - sourceBranchContentHeight
+		} else {
+			// Even with minimum sidebars, not all branches fit
+			mrsContentHeight = maxMrsContentHeight
+			envContentHeight = minEnvContentHeight
+			versionContentHeight = minVersionContentHeight
+			sourceBranchContentHeight = minSourceBranchContentHeight
+			rootMergeContentHeight = minRootMergeContentHeight
+		}
+	}
+
+	// Render MRs sidebar section (pass content height, not total height)
+	mrsSidebar := m.renderMRsSidebarSection(width, mrsContentHeight, branches)
+
+	// Render Environment sidebar section
+	envSidebar := m.renderEnvSidebarSection(width, envContentHeight)
+
+	// Render Version sidebar section
+	versionSidebar := m.renderVersionSidebarSection(width, versionContentHeight)
+
+	// Render Source branch sidebar section
+	sourceBranchSidebar := m.renderSourceBranchSidebarSection(width, sourceBranchContentHeight)
+
+	// Render Root merge sidebar section
+	rootMergeSidebar := m.renderRootMergeSidebarSection(width, rootMergeContentHeight)
+
+	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar, sourceBranchSidebar, rootMergeSidebar)
 }
 
 // renderVersionSidebarSection renders the Version sidebar block with border

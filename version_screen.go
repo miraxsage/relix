@@ -69,10 +69,16 @@ func (m model) updateVersion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.versionError = "Invalid version format. Use: X.Y, X.Y.Z, or X.Y.Z.W"
 			return m, nil
 		}
-		// Version is valid - proceed to confirmation screen
+		// Version is valid - proceed to source branch screen
 		m.versionError = ""
-		m.screen = screenConfirm
-		m.initConfirmViewport()
+		m.screen = screenSourceBranch
+		// Only initialize source branch input if not already done
+		if m.sourceBranchInput.CharLimit == 0 {
+			m.initSourceBranchInput()
+		} else {
+			// Just focus the existing input
+			m.sourceBranchInput.Focus()
+		}
 		return m, nil
 	}
 
@@ -271,9 +277,13 @@ func (m model) renderEnvSidebarSection(width int, contentHeight int) string {
 func (m model) renderVersionInput(width int) string {
 	var sb strings.Builder
 
-	// Prompt with step number
+	// Step title
+	sb.WriteString(envTitleStepStyle.Render("[3]") + envTitleStyle.Render(" Version "))
+	sb.WriteString("\n\n")
+
+	// Prompt
 	prompt := "Input semantic number to version this release:"
-	sb.WriteString(envTitleStepStyle.Render("[3]") + " " + envPromptStyle.Render(prompt))
+	sb.WriteString(envPromptStyle.Render(prompt))
 	sb.WriteString("\n\n")
 
 	// Version input field

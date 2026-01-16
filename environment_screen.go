@@ -183,9 +183,13 @@ func (m model) renderSelectedMRsSidebar(width int) string {
 func (m model) renderEnvSelection(width int) string {
 	var sb strings.Builder
 
-	// Prompt with step number
+	// Step title
+	sb.WriteString(envTitleStepStyle.Render("[2]") + envTitleStyle.Render(" Environment "))
+	sb.WriteString("\n\n")
+
+	// Prompt
 	prompt := "Select environment to release selected MRs to:"
-	sb.WriteString(envTitleStepStyle.Render("[2]") + " " + envPromptStyle.Render(prompt))
+	sb.WriteString(envPromptStyle.Render(prompt))
 	sb.WriteString("\n\n")
 
 	// Environment list

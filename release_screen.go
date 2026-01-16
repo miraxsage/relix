@@ -360,8 +360,8 @@ func (m model) viewRelease() string {
 	contentHeight := m.height - 4
 	totalHeight := contentHeight + 2
 
-	// Build triple sidebar (same as confirm screen)
-	sidebar := m.renderTripleSidebar(sidebarW, totalHeight)
+	// Build five sidebar (same as confirm screen)
+	sidebar := m.renderFiveSidebar(sidebarW, totalHeight)
 
 	// Build content
 	contentContent := m.renderReleaseContent(contentWidth-2, contentHeight)
@@ -761,6 +761,8 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 		MRBranches:      branches,
 		Environment:     *m.selectedEnv,
 		Version:         m.versionInput.Value(),
+		SourceBranch:    m.sourceBranchInput.Value(),
+		RootMerge:       m.rootMergeSelection,
 		ProjectID:       m.selectedProject.ID,
 		CurrentStep:     ReleaseStepCheckoutRoot,
 		LastSuccessStep: ReleaseStepIdle,

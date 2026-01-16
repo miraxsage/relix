@@ -315,12 +315,12 @@ func (m *model) updateListSize() {
 	m.list.SetSize(sidebarWidth-4, m.height-6)
 
 	if !m.ready {
-		m.viewport = viewport.New(contentWidth-4, m.height-5)
+		m.viewport = viewport.New(contentWidth-4, m.height-6)
 		m.viewport.SetContent(m.renderMarkdown())
 		m.ready = true
 	} else {
 		m.viewport.Width = contentWidth - 4
-		m.viewport.Height = m.height - 5
+		m.viewport.Height = m.height - 6
 	}
 }
 
@@ -411,7 +411,7 @@ func (m model) renderMarkdown() string {
 
 	selected := m.list.SelectedItem()
 	if selected == nil {
-		return lipgloss.NewStyle().Padding(1).Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
 	}
 
 	style := styles.DarkStyleConfig
@@ -483,7 +483,7 @@ func (m model) renderMarkdown() string {
 		return markdown
 	}
 
-	return rendered
+	return strings.Trim(rendered, "\n")
 }
 
 // viewList renders the main list screen
@@ -518,6 +518,8 @@ func (m model) viewList() string {
 	content := contentStyle.
 		Width(contentWidth).
 		Height(m.height - 4).
+		PaddingTop(1).
+		PaddingBottom(1).
 		Render(contentContent)
 
 	// Combine sidebar and content
