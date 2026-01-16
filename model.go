@@ -48,6 +48,14 @@ type model struct {
 	selectedEnv  *Environment
 	versionError string
 
+	// Source branch input screen
+	sourceBranchInput textinput.Model
+	sourceBranchError string
+
+	// Root merge screen
+	rootMergeButtonIndex int  // 0 = Yes, 1 = No
+	rootMergeSelection   bool // true = merge, false = skip
+
 	// Confirmation screen
 	confirmViewport viewport.Model
 
@@ -126,7 +134,9 @@ func NewModel() model {
 			{Name: "STAGE", BranchName: "stable"},
 			{Name: "PROD", BranchName: "master"},
 		},
-		selectedMRs: make(map[int]bool),
+		selectedMRs:          make(map[int]bool),
+		rootMergeSelection:   true, // Default to "Yes, merge it"
+		rootMergeButtonIndex: 0,    // Default button is "Yes, merge it"
 	}
 }
 
@@ -209,6 +219,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateEnvSelect(msg)
 		case screenVersion:
 			return m.updateVersion(msg)
+		case screenSourceBranch:
+			return m.updateSourceBranch(msg)
+		case screenRootMerge:
+			return m.updateRootMerge(msg)
 		case screenConfirm:
 			return m.updateConfirm(msg)
 		case screenRelease:
@@ -443,6 +457,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	// Update version input for non-KeyMsg messages (like cursor blink)
+	if m.screen == screenVersion {
+		var cmd tea.Cmd
+		m.versionInput, cmd = m.versionInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	// Update source branch input for non-KeyMsg messages (like cursor blink)
+	if m.screen == screenSourceBranch {
+		var cmd tea.Cmd
+		m.sourceBranchInput, cmd = m.sourceBranchInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -462,6 +490,10 @@ func (m model) View() string {
 		view = m.viewEnvSelect()
 	case screenVersion:
 		view = m.viewVersion()
+	case screenSourceBranch:
+		view = m.viewSourceBranch()
+	case screenRootMerge:
+		view = m.viewRootMerge()
 	case screenConfirm:
 		view = m.viewConfirm()
 	case screenRelease:
