@@ -250,7 +250,7 @@ func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 		"/**/ - any folders, * - any char sequence.\n" +
 		"e.g. garbage/ - any whole \"garbage\" folder, /garbage/ - whole \"garbage\" folder at project root, " +
 		"/node_modules/**/*.js, /file-*.ts, .gitlab-ci.yml"
-	b.WriteString(settingsDescStyle.Render(desc))
+	b.WriteString(helpStyle.Render(desc))
 	b.WriteString("\n\n")
 
 	// Update textarea width to fit modal (accounting for padding only, border is outside Width)
@@ -275,18 +275,15 @@ func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 	// Save button (centered)
 	b.WriteString("\n\n")
 	buttonText := "Save and close"
-	var buttonStyle lipgloss.Style
+	var btnStyle lipgloss.Style
 	if m.settingsFocusIndex == 1 && m.settingsError == "" {
 		// Focused and no errors
-		buttonStyle = settingsButtonActiveStyle
-	} else if m.settingsError != "" {
-		// Disabled (has errors)
-		buttonStyle = settingsButtonDisabledStyle
+		btnStyle = buttonActiveStyle
 	} else {
-		// Normal
-		buttonStyle = settingsButtonStyle
+		// Normal or disabled (same unfocused style)
+		btnStyle = buttonStyle
 	}
-	button := buttonStyle.Render(buttonText)
+	button := btnStyle.Render(buttonText)
 	// Center the button
 	buttonWidth := lipgloss.Width(button)
 	padding := (contentWidth - buttonWidth) / 2

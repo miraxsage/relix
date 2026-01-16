@@ -27,10 +27,10 @@ var (
 					Foreground(lipgloss.Color("105"))
 
 	projectFilterPlaceholderStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("241"))
+					Foreground(lipgloss.Color("60"))
 
 	projectFilterTextStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255"))
+				Foreground(lipgloss.Color("231"))
 
 	projectSelectorStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).

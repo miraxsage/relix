@@ -16,19 +16,19 @@ var versionRegex = regexp.MustCompile(`^\d+(\.\d+){1,3}$`)
 // Styles for version input screen
 var (
 	versionInputStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("255"))
+		Foreground(lipgloss.Color("189"))
 )
 
 // initVersionInput initializes the version text input
 func initVersionInput() textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = "e.g. 1.2.3"
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	ti.Focus()
 	ti.CharLimit = 20
 	ti.Width = 20
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
-	ti.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	ti.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
 	return ti
 }

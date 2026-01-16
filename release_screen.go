@@ -27,17 +27,17 @@ var (
 
 	releaseSuccessGreenStyle = lipgloss.NewStyle().
 					Background(lipgloss.Color("29")).
-					Foreground(lipgloss.Color("255"))
+					Foreground(lipgloss.Color("231"))
 
 	releaseConflictStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255")).
+				Foreground(lipgloss.Color("231")).
 				Background(lipgloss.Color("196")).
 				PaddingLeft(1).
 				PaddingRight(1).
 				Bold(true)
 
 	releaseErrorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255")).
+				Foreground(lipgloss.Color("231")).
 				Background(lipgloss.Color("196")).
 				PaddingLeft(1).
 				PaddingRight(1).
@@ -58,26 +58,9 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("240"))
 
-	releaseButtonInactiveStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("255")).
-					Background(lipgloss.Color("240")).
-					Padding(0, 2)
-
 	releaseTextActiveStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("105"))
-
-	releaseButtonActiveStyle = lipgloss.NewStyle().
-					Bold(true).
-					Foreground(lipgloss.Color("255")).
-					Background(lipgloss.Color("62")).
-					Padding(0, 2)
-
-	releaseButtonDangerStyle = lipgloss.NewStyle().
-					Bold(true).
-					Foreground(lipgloss.Color("255")).
-					Background(lipgloss.Color("196")).
-					Padding(0, 2)
 
 	releaseHorizontalLineStyle = lipgloss.NewStyle().
 					Foreground(lipgloss.Color("240"))
@@ -569,7 +552,7 @@ func (m model) renderReleaseStatus(width int) string {
 		status = fmt.Sprintf("Release is %s\nNow do final step - create its merge request to %s\nPress %s",
 			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPOSED "),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name),
-			releaseTextActiveStyle.Render("Create MR to ")+getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name),
+			releaseTextActiveStyle.Render("Create MR to "+state.Environment.Name),
 		)
 
 	case ReleaseStepPushAndCreateMR:
@@ -629,16 +612,16 @@ func (m model) renderReleaseButtons(width int) string {
 		case ReleaseButtonAbort:
 			label = "Abort"
 			if isFocused {
-				style = releaseButtonDangerStyle
+				style = buttonDangerStyle
 			} else {
-				style = releaseButtonInactiveStyle
+				style = buttonStyle
 			}
 		case ReleaseButtonRetry:
 			label = "Retry"
 			if isFocused {
-				style = releaseButtonActiveStyle
+				style = buttonActiveStyle
 			} else {
-				style = releaseButtonInactiveStyle
+				style = buttonStyle
 			}
 		case ReleaseButtonCreateMR:
 			envName := ""
@@ -647,23 +630,23 @@ func (m model) renderReleaseButtons(width int) string {
 			}
 			label = fmt.Sprintf("Create MR to %s", envName)
 			if isFocused {
-				style = releaseButtonActiveStyle
+				style = buttonActiveStyle
 			} else {
-				style = releaseButtonInactiveStyle
+				style = buttonStyle
 			}
 		case ReleaseButtonComplete:
 			label = "Complete"
 			if isFocused {
-				style = releaseButtonActiveStyle
+				style = buttonActiveStyle
 			} else {
-				style = releaseButtonInactiveStyle
+				style = buttonStyle
 			}
 		case ReleaseButtonOpen:
 			label = "Open"
 			if isFocused {
-				style = releaseButtonActiveStyle
+				style = buttonActiveStyle
 			} else {
-				style = releaseButtonInactiveStyle
+				style = buttonStyle
 			}
 		}
 
@@ -686,11 +669,11 @@ func (m model) overlayAbortConfirm(background string) string {
 
 	var yesBtn, cancelBtn string
 	if m.abortConfirmIndex == 0 {
-		yesBtn = releaseButtonDangerStyle.Render("Yes")
-		cancelBtn = releaseButtonInactiveStyle.Render("Cancel")
+		yesBtn = buttonDangerStyle.Render("Yes")
+		cancelBtn = buttonStyle.Render("Cancel")
 	} else {
-		yesBtn = releaseButtonInactiveStyle.Render("Yes")
-		cancelBtn = releaseButtonActiveStyle.Render("Cancel")
+		yesBtn = buttonStyle.Render("Yes")
+		cancelBtn = buttonActiveStyle.Render("Cancel")
 	}
 	sb.WriteString(fmt.Sprintf("        %s        %s", yesBtn, cancelBtn))
 
@@ -717,11 +700,11 @@ func (m model) overlayDeleteRemoteConfirm(background string) string {
 
 	var yesBtn, noBtn string
 	if m.deleteRemoteConfirmIndex == 0 {
-		yesBtn = releaseButtonDangerStyle.Render("Yes, delete")
-		noBtn = releaseButtonInactiveStyle.Render("No, keep it")
+		yesBtn = buttonDangerStyle.Render("Yes, delete")
+		noBtn = buttonStyle.Render("No, keep it")
 	} else {
-		yesBtn = releaseButtonInactiveStyle.Render("Yes, delete")
-		noBtn = releaseButtonActiveStyle.Render("No, keep it")
+		yesBtn = buttonStyle.Render("Yes, delete")
+		noBtn = buttonActiveStyle.Render("No, keep it")
 	}
 	sb.WriteString(fmt.Sprintf("     %s     %s", yesBtn, noBtn))
 

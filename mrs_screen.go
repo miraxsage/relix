@@ -24,13 +24,14 @@ type mrItemColors struct {
 // MR item color schemes
 var (
 	draftSelectedColors = mrItemColors{
-		titleFg:  lipgloss.Color("244"),
-		descFg:   lipgloss.Color("244"),
-		borderFg: lipgloss.Color("244"),
+		titleFg:  lipgloss.Color("60"),
+		descFg:   lipgloss.Color("60"),
+		borderFg: lipgloss.Color("60"),
 	}
 	draftNormalColors = mrItemColors{
-		titleFg: lipgloss.Color("242"),
-		descFg:  lipgloss.Color("242"),
+		titleFg:  lipgloss.Color("60"),
+		descFg:   lipgloss.Color("60"),
+		borderFg: lipgloss.Color("60"),
 	}
 	checkedSelectedColors = mrItemColors{
 		titleFg:  lipgloss.Color("220"),
@@ -48,8 +49,8 @@ var (
 		borderFg: lipgloss.Color("105"),
 	}
 	normalNormalColors = mrItemColors{
-		titleFg: lipgloss.Color("252"),
-		descFg:  lipgloss.Color("245"),
+		titleFg: lipgloss.Color("189"),
+		descFg:  lipgloss.Color("103"),
 	}
 )
 
@@ -263,6 +264,7 @@ func (m *model) initListScreen() {
 	}
 	l := list.New([]list.Item{}, newMRDelegate(m.selectedMRs), 0, 0)
 	l.Title = "Open MRs"
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("231")).PaddingLeft(1).PaddingRight(1)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
 	l.SetShowStatusBar(false)
@@ -272,7 +274,7 @@ func (m *model) initListScreen() {
 	l.KeyMap.ForceQuit.SetEnabled(false)
 
 	// Style "no items" text as white
-	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("255"))
+	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("189"))
 
 	m.list = l
 	m.ready = false
@@ -409,12 +411,15 @@ func (m model) renderMarkdown() string {
 
 	selected := m.list.SelectedItem()
 	if selected == nil {
-		return lipgloss.NewStyle().Padding(1).Foreground(lipgloss.Color("255")).Render("No merge requests found.\nPress 'r' to refresh.")
+		return lipgloss.NewStyle().Padding(1).Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
 	}
 
 	style := styles.DarkStyleConfig
+	style.Document.StylePrimitive.Color = stringPtr("189")
 	style.Strong.Color = stringPtr("220")
 	style.H1.Prefix = " "
+	style.H1.BackgroundColor = stringPtr("62")
+	style.H1.Color = stringPtr("231")
 	style.H2.Prefix = ""
 	style.H3.Prefix = ""
 	style.H3.Color = stringPtr("105")

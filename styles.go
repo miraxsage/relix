@@ -5,7 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	// Common styles
 	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
+			Foreground(lipgloss.Color("60"))
 
 	// Main screen styles
 	sidebarStyle = lipgloss.NewStyle().
@@ -55,14 +55,14 @@ var (
 				MarginBottom(1)
 
 	commandItemStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252"))
+				Foreground(lipgloss.Color("189"))
 
 	commandItemSelectedStyle = lipgloss.NewStyle().
 					Bold(true).
 					Foreground(lipgloss.Color("105"))
 
 	commandDescStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241"))
+				Foreground(lipgloss.Color("60"))
 
 	// Settings modal styles
 	settingsTitleStyle = lipgloss.NewStyle().
@@ -71,37 +71,36 @@ var (
 
 	settingsTabActiveStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("255")).
+				Foreground(lipgloss.Color("231")).
 				Background(lipgloss.Color("62")).
 				Padding(0, 2)
 
 	settingsTabStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241")).
+				Foreground(lipgloss.Color("60")).
 				Padding(0, 2)
 
 	settingsLabelStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("255"))
-
-	settingsDescStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("245"))
+				Foreground(lipgloss.Color("189"))
 
 	settingsErrorStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("9"))
 
-	settingsButtonStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("249")).
-				Background(lipgloss.Color("240")).
+	// Common button styles
+	buttonStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Background(lipgloss.Color("238")).
+			Padding(0, 2)
+
+	buttonActiveStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("62")).
+				Bold(true).
 				Padding(0, 2)
 
-	settingsButtonActiveStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("255")).
-					Background(lipgloss.Color("62")).
-					Bold(true).
-					Padding(0, 2)
-
-	settingsButtonDisabledStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("245")).
-					Background(lipgloss.Color("238")).
-					Padding(0, 2)
+	buttonDangerStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("196")).
+				Bold(true).
+				Padding(0, 2)
 )

@@ -115,7 +115,7 @@ func sidebarWidth(terminalWidth int) int {
 
 // overlayLoadingModal renders a centered loading modal overlay
 func overlayLoadingModal(spinnerView, background string, width, height int) string {
-	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231"))
 	text := loadingStyle.Render(spinnerView + " Loading...")
 
 	config := ModalConfig{

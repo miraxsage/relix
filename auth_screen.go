@@ -10,7 +10,7 @@ import (
 
 // viewLoading renders the initial loading screen
 func (m model) viewLoading() string {
-	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231"))
 	content := loadingStyle.Render(m.spinner.View() + " Loading...")
 
 	// Center vertically and horizontally
@@ -30,7 +30,7 @@ func initAuthInputs() []textinput.Model {
 	// GitLab URL input
 	inputs[0] = textinput.New()
 	inputs[0].Placeholder = "https://gitlab.com"
-	inputs[0].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	inputs[0].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	inputs[0].Focus()
 	inputs[0].CharLimit = 256
 	inputs[0].Width = 40
@@ -39,7 +39,7 @@ func initAuthInputs() []textinput.Model {
 	// Email input
 	inputs[1] = textinput.New()
 	inputs[1].Placeholder = "user@example.com"
-	inputs[1].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	inputs[1].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	inputs[1].CharLimit = 256
 	inputs[1].Width = 40
 	inputs[1].Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
@@ -47,7 +47,7 @@ func initAuthInputs() []textinput.Model {
 	// Token input
 	inputs[2] = textinput.New()
 	inputs[2].Placeholder = "glpat-... (requires api scope)"
-	inputs[2].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	inputs[2].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	inputs[2].CharLimit = 256
 	inputs[2].Width = 40
 	inputs[2].EchoMode = textinput.EchoPassword
@@ -173,18 +173,9 @@ func (m model) viewAuth() string {
 	// Submit button
 	var submitStyle lipgloss.Style
 	if m.focusIndex == len(m.inputs) {
-		// Focused: green background, bold
-		submitStyle = lipgloss.NewStyle().
-			Padding(0, 2).
-			Background(lipgloss.Color("62")).
-			Foreground(lipgloss.Color("255")).
-			Bold(true)
+		submitStyle = buttonActiveStyle
 	} else {
-		// Unfocused: gray background (same as release screen buttons)
-		submitStyle = lipgloss.NewStyle().
-			Padding(0, 2).
-			Background(lipgloss.Color("240")).
-			Foreground(lipgloss.Color("249"))
+		submitStyle = buttonStyle
 	}
 
 	submitButton := lipgloss.NewStyle().
@@ -212,7 +203,7 @@ func (m model) viewAuth() string {
 		loadingLine := lipgloss.NewStyle().
 			Width(innerWidth).
 			Align(lipgloss.Center).
-			Foreground(lipgloss.Color("255")).
+			Foreground(lipgloss.Color("231")).
 			Render(loadingText)
 
 		// Build content with title and vertical centering for loading

@@ -11,12 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Button style for Release it button
-var releaseButtonStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("255")).
-	Background(lipgloss.Color("62")).
-	Padding(0, 2)
 
 // initConfirmViewport initializes the confirmation viewport
 func (m *model) initConfirmViewport() {
@@ -178,7 +172,7 @@ func (m model) renderVersionSidebarSection(width int, contentHeight int) string 
 	}
 	if version != "" {
 		versionStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("255")).
+			Foreground(lipgloss.Color("189")).
 			Bold(true)
 		sb.WriteString(versionStyle.Render(version))
 	}
@@ -202,7 +196,7 @@ func (m model) renderConfirmContent(width int, availableHeight int) string {
 	viewportContent := m.confirmViewport.View()
 
 	// Render button with margins
-	button := releaseButtonStyle.Render("Release it")
+	button := buttonActiveStyle.Render("Release it")
 	buttonLine := "\n" + lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(button)
 
 	return viewportContent + buttonLine
@@ -250,6 +244,7 @@ If you agree, press enter and release it.
 			envColor = "203"
 		}
 	}
+	style.Document.StylePrimitive.Color = stringPtr("189")
 	style.Strong.Color = stringPtr(envColor)
 	style.Code.BackgroundColor = stringPtr("237")
 	style.Code.Color = stringPtr("252")

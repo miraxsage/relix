@@ -17,22 +17,21 @@ var (
 
 	envTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("255")).
+			Foreground(lipgloss.Color("231")).
 			Background(lipgloss.Color("62"))
 
 	envItemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("255")).
+			Foreground(lipgloss.Color("189")).
 			PaddingLeft(2)
 
 	envPromptStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("255")).
-			Bold(true)
+			Foreground(lipgloss.Color("189"))
 
 	envHintBaseStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255"))
+				Foreground(lipgloss.Color("189"))
 
 	mrBranchStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
+			Foreground(lipgloss.Color("189"))
 )
 
 // getEnvBranchColor returns the foreground color for branch name based on environment
@@ -47,7 +46,7 @@ func getEnvBranchColor(envName string) string {
 	case "PROD":
 		return "210"
 	default:
-		return "255"
+		return "231"
 	}
 }
 
@@ -55,15 +54,15 @@ func getEnvBranchColor(envName string) string {
 func getEnvHintStyle(envName string) lipgloss.Style {
 	switch envName {
 	case "DEVELOP":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("62"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Background(lipgloss.Color("62"))
 	case "TEST":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("236")).Background(lipgloss.Color("220"))
 	case "STAGE":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("29"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Background(lipgloss.Color("29"))
 	case "PROD":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("196"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Background(lipgloss.Color("196"))
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("231"))
 	}
 }
 

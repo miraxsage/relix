@@ -95,7 +95,7 @@ type model struct {
 func NewModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.MiniDot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("231"))
 
 	// Initialize settings textarea
 	ta := textarea.New()
@@ -104,11 +104,11 @@ func NewModel() model {
 	ta.SetHeight(6)
 	ta.SetWidth(50)
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	ta.FocusedStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62"))
-	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 	ta.BlurredStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240"))
