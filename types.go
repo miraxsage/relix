@@ -236,3 +236,11 @@ type releaseMRCreatedMsg struct {
 type setProgramMsg struct {
 	program *tea.Program
 }
+
+// sourceBranchCheckMsg is sent when the source branch remote check completes
+type sourceBranchCheckMsg struct {
+	branchName   string // The branch name that was checked
+	exists       bool   // Whether the remote branch exists
+	sameAsRoot   bool   // If exists, whether it points to same commit as root
+	err          error  // Error if check failed
+}

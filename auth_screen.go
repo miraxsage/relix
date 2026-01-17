@@ -243,7 +243,7 @@ func (m model) viewAuth() string {
 	// Help footer (centered) - hide during loading
 	var help string
 	if !m.loading {
-		helpText := "tab/↓/↑: nav • enter: submit/next • ctrl+c: quit"
+		helpText := "tab/↓/↑: nav • enter: submit/next • C+c: quit"
 		help = helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 	}
 

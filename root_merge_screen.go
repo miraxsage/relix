@@ -82,7 +82,7 @@ func (m model) viewRootMerge() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer
-	helpText := "tab/h/l: switch • enter: confirm • u: go back • /: commands • Ctrl+c: quit"
+	helpText := "tab/h/l: switch • enter: confirm • u: go back • /: commands • C+c: quit"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
@@ -226,6 +226,10 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 				sb.WriteString("\n")
 			}
 		}
+
+		// Show status indicator based on remote check
+		sb.WriteString("\n")
+		sb.WriteString(m.renderSourceBranchSidebarStatus())
 	}
 
 	// Wrap in bordered box
@@ -239,6 +243,24 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 		Render(content)
 
 	return borderedBox
+}
+
+// renderSourceBranchSidebarStatus renders the status indicator for the sidebar
+func (m model) renderSourceBranchSidebarStatus() string {
+	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	newBranchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("40"))
+
+	switch m.sourceBranchRemoteStatus {
+	case "exists-same":
+		return rootSameStyle.Render("-> root")
+	case "exists-diff":
+		return rootDiffStyle.Render("!= root")
+	case "new":
+		return newBranchStyle.Render("new branch")
+	default:
+		return ""
+	}
 }
 
 // renderRootMergeSidebarSection renders the Root merge sidebar block with border

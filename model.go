@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -49,8 +50,12 @@ type model struct {
 	versionError string
 
 	// Source branch input screen
-	sourceBranchInput textinput.Model
-	sourceBranchError string
+	sourceBranchInput         textinput.Model
+	sourceBranchError         string
+	sourceBranchVersion       string    // Version used when source branch was last modified
+	sourceBranchRemoteStatus  string    // "exists-same", "exists-diff", "new", "checking", ""
+	sourceBranchLastCheckTime time.Time // For throttling checks
+	sourceBranchCheckedName   string    // Branch name that was last checked
 
 	// Root merge screen
 	rootMergeButtonIndex int  // 0 = Yes, 1 = No
@@ -294,7 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenAuth
 
 	case spinner.TickMsg:
-		if m.loading || m.loadingProjects || m.loadingMRs || m.releaseRunning {
+		if m.loading || m.loadingProjects || m.loadingMRs || m.releaseRunning || m.sourceBranchRemoteStatus == "checking" {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -438,6 +443,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case setProgramMsg:
 		m.program = msg.program
+		return m, nil
+
+	case sourceBranchCheckMsg:
+		// Only update if this check is for the current branch name
+		if msg.branchName == m.sourceBranchCheckedName {
+			if msg.err != nil {
+				// On error, show as new branch (can't confirm remote status)
+				m.sourceBranchRemoteStatus = "new"
+			} else if msg.exists {
+				if msg.sameAsRoot {
+					m.sourceBranchRemoteStatus = "exists-same"
+				} else {
+					m.sourceBranchRemoteStatus = "exists-diff"
+				}
+			} else {
+				m.sourceBranchRemoteStatus = "new"
+			}
+		}
 		return m, nil
 	}
 

@@ -72,10 +72,28 @@ func (m model) updateVersion(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Version is valid - proceed to source branch screen
 		m.versionError = ""
 		m.screen = screenSourceBranch
-		// Only initialize source branch input if not already done
-		if m.sourceBranchInput.CharLimit == 0 {
-			m.initSourceBranchInput()
+		// Initialize source branch input if not done or if empty
+		if m.sourceBranchInput.CharLimit == 0 || m.sourceBranchInput.Value() == "" {
+			checkCmd := m.initSourceBranchInput()
+			return m, checkCmd
 		} else {
+			// Source branch already exists - check if we need to update version in it
+			currentBranch := m.sourceBranchInput.Value()
+			oldVersion := m.sourceBranchVersion
+			if oldVersion != "" && oldVersion != version && strings.Contains(currentBranch, oldVersion) {
+				// Replace old version with new version in the branch name
+				newBranch := strings.Replace(currentBranch, oldVersion, version, -1)
+				m.sourceBranchInput.SetValue(newBranch)
+				m.sourceBranchVersion = version
+				// Trigger new remote check for updated branch name
+				if m.validateSourceBranch(newBranch) {
+					m.sourceBranchRemoteStatus = "checking"
+					m.sourceBranchCheckedName = newBranch
+					checkCmd := m.checkSourceBranchRemote(newBranch)
+					m.sourceBranchInput.Focus()
+					return m, tea.Batch(checkCmd, m.spinner.Tick)
+				}
+			}
 			// Just focus the existing input
 			m.sourceBranchInput.Focus()
 		}
@@ -127,7 +145,7 @@ func (m model) viewVersion() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer
-	helpText := "enter: confirm • u: go back • /: commands • Ctrl+c: quit"
+	helpText := "enter: confirm • u: go back • /: commands • C+c: quit"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)

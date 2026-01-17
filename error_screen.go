@@ -26,7 +26,7 @@ func (m model) viewError() string {
 	b.WriteString("\n\n")
 	b.WriteString(m.errorMsg)
 	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("enter: back to form • ctrl+c: quit"))
+	b.WriteString(helpStyle.Render("enter: back to form • C+c: quit"))
 
 	// Use width-restricted modal
 	errorContent := renderModal(b.String(), ErrorModalConfig(), m.width)

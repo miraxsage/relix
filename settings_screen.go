@@ -201,7 +201,7 @@ func (m model) overlaySettings(background string) string {
 	}
 
 	// Help footer text
-	helpText := helpStyle.Render("tab/shift+tab: focus • esc/ctrl+q: close without saving")
+	helpText := helpStyle.Render("tab/shift+tab: focus • esc/C+q: close without saving")
 
 	// Calculate inner dimensions (modal minus padding only, border is outside Width)
 	innerWidth := modalWidth - 4   // 4 horizontal padding (border is added outside)

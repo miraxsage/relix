@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,7 +11,8 @@ import (
 )
 
 // initSourceBranchInput initializes the source branch text input with default value
-func (m *model) initSourceBranchInput() {
+// Returns a command to trigger the initial remote check
+func (m *model) initSourceBranchInput() tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = "e.g. release/rpb-1.0.0-root"
 	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
@@ -28,6 +31,18 @@ func (m *model) initSourceBranchInput() {
 
 	m.sourceBranchInput = ti
 	m.sourceBranchError = ""
+	m.sourceBranchVersion = version // Track version used for this source branch
+
+	// Trigger initial remote check if we have a valid branch name
+	branchName := ti.Value()
+	if branchName != "" && m.validateSourceBranch(branchName) {
+		m.sourceBranchRemoteStatus = "checking"
+		m.sourceBranchLastCheckTime = time.Now()
+		m.sourceBranchCheckedName = branchName
+		return tea.Batch(m.checkSourceBranchRemote(branchName), m.spinner.Tick)
+	}
+
+	return nil
 }
 
 // validateSourceBranch checks if the version is present in the branch name
@@ -45,7 +60,7 @@ func (m model) validateSourceBranch(branchName string) bool {
 // updateSourceBranch handles key events on the source branch input screen
 func (m model) updateSourceBranch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "u":
+	case "ctrl+u":
 		// Go back to version input
 		m.screen = screenVersion
 		m.sourceBranchError = ""
@@ -75,13 +90,31 @@ func (m model) updateSourceBranch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle text input updates
 	var cmd tea.Cmd
+	oldValue := m.sourceBranchInput.Value()
 	m.sourceBranchInput, cmd = m.sourceBranchInput.Update(msg)
+	newValue := m.sourceBranchInput.Value()
+
+	// Track version when user modifies the source branch
+	if oldValue != newValue {
+		m.sourceBranchVersion = m.versionInput.Value()
+	}
 
 	// Clear error when user types valid input
 	if m.sourceBranchError != "" && m.validateSourceBranch(m.sourceBranchInput.Value()) {
 		m.sourceBranchError = ""
 	} else if !m.validateSourceBranch(m.sourceBranchInput.Value()) && m.sourceBranchInput.Value() != "" {
 		m.sourceBranchError = "Branch name must contain version: " + m.versionInput.Value()
+		// Clear remote status when invalid
+		m.sourceBranchRemoteStatus = ""
+	}
+
+	// Trigger remote check if needed (with throttle)
+	if oldValue != newValue && m.shouldCheckSourceBranch(newValue) {
+		m.sourceBranchRemoteStatus = "checking"
+		m.sourceBranchLastCheckTime = time.Now()
+		m.sourceBranchCheckedName = newValue
+		checkCmd := m.checkSourceBranchRemote(newValue)
+		return m, tea.Batch(cmd, checkCmd, m.spinner.Tick)
 	}
 
 	return m, cmd
@@ -118,7 +151,7 @@ func (m model) viewSourceBranch() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer
-	helpText := "enter: confirm • u: go back • /: commands • Ctrl+c: quit"
+	helpText := "enter: confirm • C+u: go back • /: commands • C+c: quit"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
@@ -146,11 +179,180 @@ func (m model) renderSourceBranchInput(width int) string {
 	sb.WriteString(versionInputStyle.Render("Source branch: "))
 	sb.WriteString(m.sourceBranchInput.View())
 
-	// Error message if any (uses same style as error modal)
+	// Show error or status
 	if m.sourceBranchError != "" {
 		sb.WriteString("\n\n")
 		sb.WriteString(errorTitleStyle.Render(m.sourceBranchError))
+	} else if m.sourceBranchInput.Value() != "" && m.validateSourceBranch(m.sourceBranchInput.Value()) {
+		// Show status when branch name is valid
+		sb.WriteString("\n\n")
+		sb.WriteString(m.renderSourceBranchStatus())
 	}
 
 	return sb.String()
+}
+
+// renderSourceBranchStatus renders the status text for the source branch check
+func (m model) renderSourceBranchStatus() string {
+	existsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	createdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("40"))
+	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
+
+	switch m.sourceBranchRemoteStatus {
+	case "checking":
+		return m.spinner.View() + " " + normalStyle.Render("Checking remote branch...")
+	case "exists-same":
+		return normalStyle.Render("Exact remote branch already ") +
+			existsStyle.Render("exists") +
+			normalStyle.Render(" ") +
+			rootSameStyle.Render("(-> root)") +
+			normalStyle.Render(" and will be used for release")
+	case "exists-diff":
+		return normalStyle.Render("Exact remote branch already ") +
+			existsStyle.Render("exists") +
+			normalStyle.Render(" ") +
+			rootDiffStyle.Render("(!= root)") +
+			normalStyle.Render(" and will be used for release")
+	case "exists":
+		return normalStyle.Render("Exact remote branch already ") +
+			existsStyle.Render("exists") +
+			normalStyle.Render(" and will be used for release")
+	case "new":
+		return normalStyle.Render("That is new branch and will be ") +
+			createdStyle.Render("created") +
+			normalStyle.Render(" for release from root")
+	default:
+		return ""
+	}
+}
+
+// checkSourceBranchRemote performs an async check for the remote branch
+func (m *model) checkSourceBranchRemote(branchName string) tea.Cmd {
+	return func() tea.Msg {
+		// Get project directory (respects -d flag)
+		workDir, err := FindProjectRoot()
+		if err != nil {
+			return sourceBranchCheckMsg{
+				branchName: branchName,
+				exists:     false,
+				sameAsRoot: false,
+				err:        err,
+			}
+		}
+
+		// Check if branch exists on remote
+		// Use CombinedOutput to capture stderr and check exit code properly
+		cmd := exec.Command("git", "ls-remote", "--heads", "origin", branchName)
+		cmd.Dir = workDir
+		output, err := cmd.CombinedOutput()
+
+		// git ls-remote returns exit code 0 even if branch not found (just empty output)
+		// It only returns non-zero for actual errors (network, auth, etc.)
+		if err != nil {
+			// Check if it's an exit error with code 128 (common git error)
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				// Real git error - treat as unable to check
+				return sourceBranchCheckMsg{
+					branchName: branchName,
+					exists:     false,
+					sameAsRoot: false,
+					err:        exitErr,
+				}
+			}
+			// Other error (command not found, etc.)
+			return sourceBranchCheckMsg{
+				branchName: branchName,
+				exists:     false,
+				sameAsRoot: false,
+				err:        err,
+			}
+		}
+
+		// Parse output - format is: "<commit-hash>\trefs/heads/<branch-name>"
+		// If empty, branch doesn't exist
+		outputStr := strings.TrimSpace(string(output))
+
+		// Check if output contains the exact branch ref
+		expectedRef := "refs/heads/" + branchName
+		exists := strings.Contains(outputStr, expectedRef)
+
+		if !exists {
+			return sourceBranchCheckMsg{
+				branchName: branchName,
+				exists:     false,
+				sameAsRoot: false,
+				err:        nil,
+			}
+		}
+
+		// Branch exists - extract commit hash
+		sourceBranchCommit := ""
+		for _, line := range strings.Split(outputStr, "\n") {
+			if strings.Contains(line, expectedRef) {
+				parts := strings.Fields(line)
+				if len(parts) > 0 {
+					sourceBranchCommit = parts[0]
+				}
+				break
+			}
+		}
+
+		// Get the commit hash of root branch
+		rootCmd := exec.Command("git", "ls-remote", "--heads", "origin", "root")
+		rootCmd.Dir = workDir
+		rootOutput, rootErr := rootCmd.CombinedOutput()
+		rootOutputStr := strings.TrimSpace(string(rootOutput))
+
+		if rootErr != nil || !strings.Contains(rootOutputStr, "refs/heads/root") {
+			// Can't determine root status, just say it exists (without root comparison)
+			return sourceBranchCheckMsg{
+				branchName: branchName,
+				exists:     true,
+				sameAsRoot: false,
+				err:        nil,
+			}
+		}
+
+		// Extract root commit hash
+		rootCommit := ""
+		for _, line := range strings.Split(rootOutputStr, "\n") {
+			if strings.Contains(line, "refs/heads/root") {
+				parts := strings.Fields(line)
+				if len(parts) > 0 {
+					rootCommit = parts[0]
+				}
+				break
+			}
+		}
+
+		sameAsRoot := sourceBranchCommit != "" && rootCommit != "" && sourceBranchCommit == rootCommit
+
+		return sourceBranchCheckMsg{
+			branchName: branchName,
+			exists:     true,
+			sameAsRoot: sameAsRoot,
+			err:        nil,
+		}
+	}
+}
+
+// shouldCheckSourceBranch determines if we should trigger a new remote check
+func (m *model) shouldCheckSourceBranch(branchName string) bool {
+	if branchName == "" {
+		return false
+	}
+	if !m.validateSourceBranch(branchName) {
+		return false
+	}
+	// Check throttle (100ms)
+	if time.Since(m.sourceBranchLastCheckTime) < 100*time.Millisecond {
+		return false
+	}
+	// Check if branch name changed since last check
+	if branchName == m.sourceBranchCheckedName && m.sourceBranchRemoteStatus != "" && m.sourceBranchRemoteStatus != "checking" {
+		return false
+	}
+	return true
 }

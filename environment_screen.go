@@ -146,7 +146,7 @@ func (m model) viewEnvSelect() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer
-	helpText := "j/k: nav • enter: select • u: go back • /: commands • Ctrl+c: quit"
+	helpText := "j/k: nav • enter: select • u: go back • /: commands • C+c: quit"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
