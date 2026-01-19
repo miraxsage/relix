@@ -107,7 +107,7 @@ func (m model) renderRootMergeContent(width int) string {
 		sourceBranch = m.releaseState.SourceBranch
 	}
 	flowText := sourceBranch + " -> root -> develop"
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("105")).Render(flowText))
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(flowText))
 	sb.WriteString("\n\n")
 
 	// Buttons
@@ -249,7 +249,7 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 func (m model) renderSourceBranchSidebarStatus() string {
 	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	newBranchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("40"))
+	newBranchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36"))
 
 	switch m.sourceBranchRemoteStatus {
 	case "exists-same":

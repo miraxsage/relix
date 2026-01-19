@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-
 // initConfirmViewport initializes the confirmation viewport
 func (m *model) initConfirmViewport() {
 	if m.width == 0 || m.height == 0 {
@@ -43,6 +42,10 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "enter":
+		// Block release when source branch check is in progress
+		if m.sourceBranchRemoteStatus == "checking" {
+			return m, nil
+		}
 		// Start the release process
 		return m.startRelease()
 	}
@@ -71,8 +74,13 @@ func (m model) viewConfirm() string {
 	// Build five sidebar (pass total rendered height)
 	sidebar := m.renderFiveSidebar(sidebarW, totalHeight)
 
-	// Build content - confirmation info with button
-	contentContent := m.renderConfirmContent(contentWidth-4, contentHeight)
+	// Build content - show preparing screen when checking, otherwise show confirmation
+	var contentContent string
+	if m.sourceBranchRemoteStatus == "checking" {
+		contentContent = m.renderConfirmPreparing(contentWidth-4, contentHeight)
+	} else {
+		contentContent = m.renderConfirmContent(contentWidth-4, contentHeight)
+	}
 
 	// Render content with border
 	content := contentStyle.
@@ -84,7 +92,12 @@ func (m model) viewConfirm() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer
-	helpText := "↓/↑/j/k: scroll • enter: release • u: go back • /: commands • C+c: quit"
+	var helpText string
+	if m.sourceBranchRemoteStatus == "checking" {
+		helpText = "u: go back • /: commands • C+c: quit"
+	} else {
+		helpText = "↓/↑/j/k: scroll • enter: release • u: go back • /: commands • C+c: quit"
+	}
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
@@ -291,6 +304,41 @@ func (m model) renderConfirmContent(width int, availableHeight int) string {
 	return viewportContent + buttonLine
 }
 
+// renderConfirmPreparing renders the preparing screen while source branch check is in progress
+func (m model) renderConfirmPreparing(width int, height int) string {
+	version := m.versionInput.Value()
+	envName := ""
+	if m.selectedEnv != nil {
+		envName = m.selectedEnv.Name
+	}
+	sourceBranch := m.sourceBranchInput.Value()
+	if sourceBranch == "" && m.releaseState != nil {
+		sourceBranch = m.releaseState.SourceBranch
+	}
+
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
+	envColor := "220" // default
+	if m.selectedEnv != nil {
+		envColor = getEnvBranchColor(m.selectedEnv.Name)
+	}
+	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(envColor))
+	highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+
+	var sb strings.Builder
+	sb.WriteString(textStyle.Render("We are almost ready to release ") + envStyle.Render(version) + textStyle.Render(" of selected MRs to ") + envStyle.Render(envName) + textStyle.Render(" environment,"))
+	sb.WriteString("\n")
+	sb.WriteString(textStyle.Render("but there are some ") + highlightStyle.Render("preparing important details") + textStyle.Render(":"))
+	sb.WriteString("\n\n")
+	sb.WriteString(m.spinner.View() + " " + textStyle.Render("Checking remote branch ") + envStyle.Render(sourceBranch) + textStyle.Render("..."))
+
+	// Wrap with padding
+	content := lipgloss.NewStyle().
+		Padding(1, 2).
+		Render(sb.String())
+
+	return content
+}
+
 // renderConfirmMarkdown renders the confirmation markdown content
 func (m model) renderConfirmMarkdown(width int) string {
 	version := m.versionInput.Value()
@@ -301,28 +349,66 @@ func (m model) renderConfirmMarkdown(width int) string {
 		envBranch = m.selectedEnv.BranchName
 	}
 
-	markdown := fmt.Sprintf(`We are ready to release **%s** of selected MRs to **%s** environment!
+	// Get source branch name
+	sourceBranch := m.sourceBranchInput.Value()
+	if sourceBranch == "" && m.releaseState != nil {
+		sourceBranch = m.releaseState.SourceBranch
+	}
+
+	// Determine step 1 text based on whether source branch exists remotely
+	// Note: when "checking", the spinner is shown above viewport in renderConfirmContent
+	step1Text := ""
+	sourceBranchExists := m.sourceBranchRemoteStatus == "exists-same" || m.sourceBranchRemoteStatus == "exists-diff" || m.sourceBranchRemoteStatus == "exists"
+	if sourceBranchExists {
+		step1Text = fmt.Sprintf("1. [Use remote branch]()**%s** as cumulative one", sourceBranch)
+	} else {
+		// Default to "Create" for new branches or when still checking
+		step1Text = fmt.Sprintf("1. [Create cumulative branch]()**%s** from current root", sourceBranch)
+	}
+
+	// Create non-breaking versions of branch names for ATTENTION line (prevents word wrap at hyphens)
+	nbHyphen := "‑" // U+2011 non-breaking hyphen
+	sourceBranchNB := strings.ReplaceAll(sourceBranch, "-", nbHyphen)
+	versionNB := strings.ReplaceAll(version, "-", nbHyphen)
+	envBranchNB := strings.ReplaceAll(envBranch, "-", nbHyphen)
+
+	// Build step 6 and 7 based on root merge selection
+	step6And7 := ""
+	if m.rootMergeSelection {
+		step6And7 = fmt.Sprintf(`6. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
+
+7. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
+	} else {
+		step6And7 = "6. Open new environment MR in GitLab for manual approval and pipeline execution"
+	}
+
+	markdown := fmt.Sprintf(`[We are ready]()to release **%s** of selected MRs to **%s** environment!
 
 This release will go through the following steps:
 
-1. Create cumulative branch **release/rpb-%s-root** from current root
+%s
 
-2. Merge selected MRs branches to it and resolve conflicts with your participation
+2. Merge selected MRs branches to it and ~~resolve conflicts~~ with your participation
 
-3. Create environment branch **release/rpb-%s-%s** from current **%s**
+3. Create environment release branch **release/rpb-%s-%s** from current **%s**
 
-4. Copy new composed MRs' content from **release/rpb-%s-root** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous
+4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous inside version **%s**
 
 5. Create new merge request from **release/rpb-%s-%s** to **%s**
 
-6. Open new environment MR in GitLab for manual approval and pipeline execution
+%s
 
-*ATTENTION!* ~~If there are existing local branches under mentioned names~~ *release/rpb-%s-root* ~~or~~ *release/rpb-%s-%s*~~, then they will be removed and recreated with pointer at current root and current environment branch respectively~~
+*ATTENTION!* ~~If there are existing local branches under mentioned names~~ *%s* ~~or~~ *release/rpb‑%s‑%s*~~, then they will be removed and recreated with pointer at current root or remote source branch and current environment branch respectively~~
 
 If you agree, press enter and release it.
 `,
-		version, envName, version, version, envBranch, envBranch, version,
-		version, envBranch, version, envBranch, envBranch, version, version, envBranch,
+		version, envName,
+		step1Text,
+		version, envBranch, envBranch,
+		sourceBranch, version, envBranch, version,
+		version, envBranch, envBranch,
+		step6And7,
+		sourceBranchNB, versionNB, envBranchNB,
 	)
 
 	style := styles.DarkStyleConfig
@@ -341,6 +427,8 @@ If you agree, press enter and release it.
 	style.Emph.Italic = boolPtr(false)
 	style.Strikethrough.Color = stringPtr("9")
 	style.Strikethrough.CrossedOut = boolPtr(false)
+	style.LinkText.Color = stringPtr("220")
+	style.LinkText.Bold = boolPtr(false)
 	style.H1.Prefix = ""
 
 	renderer, err := glamour.NewTermRenderer(

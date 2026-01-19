@@ -460,6 +460,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.sourceBranchRemoteStatus = "new"
 			}
+			// Refresh confirm viewport if on confirm screen
+			if m.screen == screenConfirm {
+				m.initConfirmViewport()
+			}
 		}
 		return m, nil
 	}
