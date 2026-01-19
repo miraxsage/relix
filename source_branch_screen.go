@@ -195,7 +195,7 @@ func (m model) renderSourceBranchInput(width int) string {
 // renderSourceBranchStatus renders the status text for the source branch check
 func (m model) renderSourceBranchStatus() string {
 	existsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	createdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("40"))
+	createdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36"))
 	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
@@ -247,7 +247,6 @@ func (m *model) checkSourceBranchRemote(branchName string) tea.Cmd {
 		cmd := exec.Command("git", "ls-remote", "--heads", "origin", branchName)
 		cmd.Dir = workDir
 		output, err := cmd.CombinedOutput()
-
 		// git ls-remote returns exit code 0 even if branch not found (just empty output)
 		// It only returns non-zero for actual errors (network, auth, etc.)
 		if err != nil {
