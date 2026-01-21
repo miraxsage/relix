@@ -425,12 +425,14 @@ func FindProjectRoot() (string, error) {
 
 // ReleaseCommands generates git commands for each release step
 type ReleaseCommands struct {
-	workDir         string
-	version         string
-	envBranch       string
-	envName         string
-	excludePatterns []string
-	branches        []string // MR source branches to merge
+	workDir              string
+	version              string
+	envBranch            string
+	envName              string
+	excludePatterns      []string
+	branches             []string // MR source branches to merge
+	sourceBranch         string   // Custom source branch name (e.g. release/rpb-1.0.0-root)
+	sourceBranchIsRemote bool     // Whether source branch exists on remote
 }
 
 // NewReleaseCommands creates a new command builder
@@ -445,8 +447,26 @@ func NewReleaseCommands(workDir, version string, env *Environment, patterns []st
 	}
 }
 
-// RootBranch returns the release root branch name
+// NewReleaseCommandsWithSourceBranch creates a command builder with source branch configuration
+func NewReleaseCommandsWithSourceBranch(workDir, version string, env *Environment, patterns []string, branches []string, sourceBranch string, sourceBranchIsRemote bool) *ReleaseCommands {
+	return &ReleaseCommands{
+		workDir:              workDir,
+		version:              version,
+		envBranch:            env.BranchName,
+		envName:              env.Name,
+		excludePatterns:      patterns,
+		branches:             branches,
+		sourceBranch:         sourceBranch,
+		sourceBranchIsRemote: sourceBranchIsRemote,
+	}
+}
+
+// RootBranch returns the release root branch name (source branch for accumulating MRs)
 func (r *ReleaseCommands) RootBranch() string {
+	// Use custom source branch if provided
+	if r.sourceBranch != "" {
+		return r.sourceBranch
+	}
 	return fmt.Sprintf("release/rpb-%s-root", r.version)
 }
 
@@ -456,8 +476,15 @@ func (r *ReleaseCommands) EnvReleaseBranch() string {
 }
 
 // Step1CheckoutRoot returns the command for step 1
+// If source branch exists remotely, checkout from remote
+// If not, create from root branch after pull
 func (r *ReleaseCommands) Step1CheckoutRoot() string {
-	return fmt.Sprintf("git checkout root && git pull && git checkout -B %s", r.RootBranch())
+	if r.sourceBranchIsRemote {
+		// Source branch exists remotely - checkout from remote to reliably use it locally
+		return fmt.Sprintf("git checkout -B %s origin/%s", r.RootBranch(), r.RootBranch())
+	}
+	// Source branch doesn't exist - create from root after pull
+	return fmt.Sprintf("git checkout root && git pull && git checkout -B %s root", r.RootBranch())
 }
 
 // Step2MergeBranch returns the command to merge a specific branch
@@ -486,9 +513,27 @@ func (r *ReleaseCommands) Step4CheckoutFromRoot() string {
 	return fmt.Sprintf("git checkout %s -- .", r.RootBranch())
 }
 
+// Step6PushSourceBranch returns the command to push source branch to remote
+// This ensures the source branch with all merged MRs is available for the next release
+func (r *ReleaseCommands) Step6PushSourceBranch() string {
+	return fmt.Sprintf("git push -u origin %s", r.RootBranch())
+}
+
 // Step6Push returns the command for step 6 (push only, MR is created via API)
 func (r *ReleaseCommands) Step6Push() string {
 	return fmt.Sprintf("git push -u origin %s", r.EnvReleaseBranch())
+}
+
+// StepMergeToRoot returns the command to merge source branch to root and push
+// This is step 6b: git checkout root && git merge <source branch> && git push
+func (r *ReleaseCommands) StepMergeToRoot() string {
+	return fmt.Sprintf("git checkout root && git merge %s && git push", r.RootBranch())
+}
+
+// StepMergeToDevelop returns the command to merge root to develop and push
+// This is step 6c: git checkout develop && git pull && git merge root && git push
+func (r *ReleaseCommands) StepMergeToDevelop() string {
+	return "git checkout develop && git pull && git merge root && git push"
 }
 
 // ParseVersionNumber extracts version number from release commit title

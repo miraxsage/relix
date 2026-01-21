@@ -140,13 +140,16 @@ type ReleaseStep int
 
 const (
 	ReleaseStepIdle            ReleaseStep = iota
-	ReleaseStepCheckoutRoot                // Step 1: git checkout root && git pull && git checkout -B release/rpb-{ver}-root
+	ReleaseStepCheckoutRoot                // Step 1: checkout/create source branch from root or remote
 	ReleaseStepMergeBranches               // Step 2: git merge origin/{branch} for each MR
 	ReleaseStepCheckoutEnv                 // Step 3: git checkout {env} && git pull && git checkout -B release/rpb-{ver}-{env}
 	ReleaseStepCopyContent                 // Step 4: git rm -rf . && git checkout content && exclude files
 	ReleaseStepCommit                      // Step 4b: git add -A && git commit (separate so retry doesn't redo file ops)
-	ReleaseStepWaitForMR                   // Step 5: waiting for user to press "Create MR" button
-	ReleaseStepPushAndCreateMR             // Step 6: git push && create GitLab MR
+	ReleaseStepPushBranches                // Step 5: git push source branch and env release branch to remote
+	ReleaseStepWaitForMR                   // Step 6: waiting for user to press "Create MR" button
+	ReleaseStepPushAndCreateMR             // Step 7: create GitLab MR (branches already pushed)
+	ReleaseStepMergeToRoot                 // Step 6b: merge source branch to root (if root merge enabled)
+	ReleaseStepMergeToDevelop              // Step 6c: merge root to develop (if root merge enabled)
 	ReleaseStepComplete                    // Done
 )
 
@@ -160,13 +163,14 @@ type ReleaseError struct {
 // ReleaseState represents the persistent state of an in-progress release
 type ReleaseState struct {
 	// Selection info
-	SelectedMRIIDs []int       `json:"selected_mr_iids"`
-	MRBranches     []string    `json:"mr_branches"` // Source branches in merge order
-	Environment    Environment `json:"environment"`
-	Version        string      `json:"version"`
-	SourceBranch   string      `json:"source_branch"` // Source branch for accumulating MRs (e.g. release/rpb_1.0.0_root)
-	RootMerge      bool        `json:"root_merge"`    // Whether to merge release to root and root to develop
-	ProjectID      int         `json:"project_id"`
+	SelectedMRIIDs       []int       `json:"selected_mr_iids"`
+	MRBranches           []string    `json:"mr_branches"`            // Source branches in merge order
+	Environment          Environment `json:"environment"`
+	Version              string      `json:"version"`
+	SourceBranch         string      `json:"source_branch"`          // Source branch for accumulating MRs (e.g. release/rpb_1.0.0_root)
+	SourceBranchIsRemote bool        `json:"source_branch_is_remote"` // Whether source branch exists on remote (determines checkout strategy)
+	RootMerge            bool        `json:"root_merge"`             // Whether to merge release to root and root to develop
+	ProjectID            int         `json:"project_id"`
 
 	// Progress tracking
 	CurrentStep     ReleaseStep `json:"current_step"`

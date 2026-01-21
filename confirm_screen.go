@@ -372,14 +372,14 @@ func (m model) renderConfirmMarkdown(width int) string {
 	versionNB := strings.ReplaceAll(version, "-", nbHyphen)
 	envBranchNB := strings.ReplaceAll(envBranch, "-", nbHyphen)
 
-	// Build step 6 and 7 based on root merge selection
-	step6And7 := ""
+	// Build step 7 and 8 based on root merge selection
+	step7And8 := ""
 	if m.rootMergeSelection {
-		step6And7 = fmt.Sprintf(`6. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
+		step7And8 = fmt.Sprintf(`7. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
 
-7. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
+8. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
 	} else {
-		step6And7 = "6. Open new environment MR in GitLab for manual approval and pipeline execution"
+		step7And8 = "7. Open new environment MR in GitLab for manual approval and pipeline execution"
 	}
 
 	markdown := fmt.Sprintf(`[We are ready]()to release **%s** of selected MRs to **%s** environment!
@@ -394,7 +394,9 @@ This release will go through the following steps:
 
 4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous inside version **%s**
 
-5. Create new merge request from **release/rpb-%s-%s** to **%s**
+5. [Push]()**%s** [and]()**release/rpb-%s-%s** [to remote]()
+
+6. Create new merge request from **release/rpb-%s-%s** to **%s**
 
 %s
 
@@ -406,8 +408,9 @@ If you agree, press enter and release it.
 		step1Text,
 		version, envBranch, envBranch,
 		sourceBranch, version, envBranch, version,
+		sourceBranch, version, envBranch,
 		version, envBranch, envBranch,
-		step6And7,
+		step7And8,
 		sourceBranchNB, versionNB, envBranchNB,
 	)
 

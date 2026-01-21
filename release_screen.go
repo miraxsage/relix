@@ -204,7 +204,7 @@ func (m model) updateRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showAbortConfirm = false
 			m.abortConfirmIndex = 0
 			// If we're at or past push step, ask about remote branch deletion
-			if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushAndCreateMR {
+			if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushBranches {
 				m.showDeleteRemoteConfirm = true
 				m.deleteRemoteConfirmIndex = 0
 				return m, nil
@@ -215,7 +215,7 @@ func (m model) updateRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.abortConfirmIndex == 0 {
 				m.abortConfirmIndex = 0
 				// If we're at or past push step, ask about remote branch deletion
-				if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushAndCreateMR {
+				if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushBranches {
 					m.showDeleteRemoteConfirm = true
 					m.deleteRemoteConfirmIndex = 0
 					return m, nil
@@ -548,6 +548,13 @@ func (m model) renderReleaseStatus(width int) string {
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)))
 
+	case ReleaseStepPushBranches:
+		status = fmt.Sprintf("%s %s %s\nPushing %s and release branch to remote...",
+			m.spinner.View(),
+			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
+			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+			releaseOrangeStyle.Render(state.SourceBranch))
+
 	case ReleaseStepWaitForMR:
 		status = fmt.Sprintf("Release is %s\nNow do final step - create its merge request to %s\nPress %s",
 			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPOSED "),
@@ -556,7 +563,21 @@ func (m model) renderReleaseStatus(width int) string {
 		)
 
 	case ReleaseStepPushAndCreateMR:
-		status = fmt.Sprintf("%s %s %s\nPushing branch and creating merge request...",
+		status = fmt.Sprintf("%s %s %s\nCreating merge request to %s...",
+			m.spinner.View(),
+			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
+			releasePercentStyle.Render("99%"),
+			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name))
+
+	case ReleaseStepMergeToRoot:
+		status = fmt.Sprintf("%s %s %s\nMerging %s to root...",
+			m.spinner.View(),
+			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
+			releasePercentStyle.Render("99%"),
+			releaseOrangeStyle.Render(state.SourceBranch))
+
+	case ReleaseStepMergeToDevelop:
+		status = fmt.Sprintf("%s %s %s\nMerging root to develop...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render("99%"))
@@ -755,19 +776,23 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Determine if source branch exists remotely based on the check status
+	sourceBranchIsRemote := m.sourceBranchRemoteStatus == "exists-same" || m.sourceBranchRemoteStatus == "exists-diff" || m.sourceBranchRemoteStatus == "exists"
+
 	// Create release state
 	state := &ReleaseState{
-		SelectedMRIIDs:  mrIIDs,
-		MRBranches:      branches,
-		Environment:     *m.selectedEnv,
-		Version:         m.versionInput.Value(),
-		SourceBranch:    m.sourceBranchInput.Value(),
-		RootMerge:       m.rootMergeSelection,
-		ProjectID:       m.selectedProject.ID,
-		CurrentStep:     ReleaseStepCheckoutRoot,
-		LastSuccessStep: ReleaseStepIdle,
-		MergedBranches:  []string{},
-		WorkDir:         workDir,
+		SelectedMRIIDs:       mrIIDs,
+		MRBranches:           branches,
+		Environment:          *m.selectedEnv,
+		Version:              m.versionInput.Value(),
+		SourceBranch:         m.sourceBranchInput.Value(),
+		SourceBranchIsRemote: sourceBranchIsRemote,
+		RootMerge:            m.rootMergeSelection,
+		ProjectID:            m.selectedProject.ID,
+		CurrentStep:          ReleaseStepCheckoutRoot,
+		LastSuccessStep:      ReleaseStepIdle,
+		MergedBranches:       []string{},
+		WorkDir:              workDir,
 	}
 
 	m.releaseState = state
@@ -798,7 +823,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 		config, _ := LoadConfig()
 		patterns := strings.Split(config.ExcludePatterns, "\n")
 
-		cmds := NewReleaseCommands(workDir, state.Version, &state.Environment, patterns, state.MRBranches)
+		cmds := NewReleaseCommandsWithSourceBranch(workDir, state.Version, &state.Environment, patterns, state.MRBranches, state.SourceBranch, state.SourceBranchIsRemote)
 
 		var command string
 		var output string
@@ -898,9 +923,34 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			commitCmd := fmt.Sprintf("git add -A && git commit -m %q -m $'%s'", title, escapedBody)
 			output, err = executor.RunCommand(commitCmd)
 
+		case ReleaseStepPushBranches:
+			// Push source branch to remote (so it's available for next release)
+			// TODO: output1, err1 := executor.RunCommand(cmds.Step6PushSourceBranch())
+			output1, err1 := executor.RunCommand(fmt.Sprintf("git log %s -1 --oneline", cmds.RootBranch()))
+			if err1 != nil {
+				return releaseStepCompleteMsg{step: step, err: err1, output: output1}
+			}
+
+			// Push env release branch to remote
+			output2, err2 := executor.RunCommand(cmds.Step6Push())
+			output = output1 + output2
+			err = err2
+
 		case ReleaseStepPushAndCreateMR:
-			command = cmds.Step6Push()
-			output, err = executor.RunCommand(command)
+			// Branches are already pushed in ReleaseStepPushBranches
+			// This step only creates the GitLab MR (handled via API after this step completes)
+			output = "Branches already pushed. Creating merge request...\n"
+			err = nil
+
+		case ReleaseStepMergeToRoot:
+			// Step 6b: Merge source branch to root and push
+			// TODO: output, err = executor.RunCommand(cmds.StepMergeToRoot())
+			output, err = executor.RunCommand("git log root -1 --oneline")
+
+		case ReleaseStepMergeToDevelop:
+			// Step 6c: Merge root to develop and push
+			// TODO: output, err = executor.RunCommand(cmds.StepMergeToDevelop())
+			output, err = executor.RunCommand("git log develop -1 --oneline")
 
 		default:
 			return releaseStepCompleteMsg{step: step, err: nil}
@@ -1008,13 +1058,18 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		state.CurrentStep = nextStep
 
 	case ReleaseStepCommit:
+		nextStep = ReleaseStepPushBranches
+		state.CurrentStep = nextStep
+
+	case ReleaseStepPushBranches:
 		nextStep = ReleaseStepWaitForMR
 		state.CurrentStep = nextStep
 		// Don't continue automatically - wait for user button press
 
 	case ReleaseStepPushAndCreateMR:
 		// Now create the MR via GitLab API
-		state.CurrentStep = ReleaseStepComplete
+		// After MR is created, handleMRCreated will trigger root merge if enabled
+		state.CurrentStep = ReleaseStepPushAndCreateMR // Keep same step until MR is created
 		// Save terminal output buffer for resume
 		state.TerminalOutput = make([]string, len(m.releaseOutputBuffer))
 		copy(state.TerminalOutput, m.releaseOutputBuffer)
@@ -1023,6 +1078,16 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 
 		// Create MR asynchronously
 		return m, m.createGitLabMR()
+
+	case ReleaseStepMergeToRoot:
+		// Continue to merge root to develop
+		nextStep = ReleaseStepMergeToDevelop
+		state.CurrentStep = nextStep
+
+	case ReleaseStepMergeToDevelop:
+		// Root merge completed, go to complete
+		nextStep = ReleaseStepComplete
+		state.CurrentStep = nextStep
 
 	default:
 		// Save terminal output buffer for resume
@@ -1046,6 +1111,22 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 	} else if nextStep == ReleaseStepWaitForMR {
 		// Focus on "Create MR" button (index 1: Abort=0, CreateMR=1)
 		m.releaseButtonIndex = 1
+	} else if nextStep == ReleaseStepComplete {
+		// Release complete (including root merge if enabled)
+		// Clear release state so Ctrl+C goes to MRs list
+		ClearReleaseState()
+
+		// Reset selected MRs for next release
+		m.initListScreen()
+		m.updateListSize()
+
+		// Reset version input
+		m.versionInput.SetValue("")
+		m.versionError = ""
+
+		// Reset environment selection
+		m.selectedEnv = nil
+		m.envSelectIndex = 0
 	}
 
 	return m, nextCmd
@@ -1098,9 +1179,26 @@ func (m *model) handleMRCreated(msg releaseMRCreatedMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.releaseState.CreatedMRURL = msg.url
 		m.releaseState.CreatedMRIID = msg.iid
-		m.releaseState.CurrentStep = ReleaseStepComplete
 		m.appendReleaseOutput("")
 		m.appendReleaseOutput(fmt.Sprintf("Merge request created: %s", msg.url))
+
+		// Check if root merge is enabled - if so, continue to merge steps
+		if m.releaseState.RootMerge {
+			m.releaseState.CurrentStep = ReleaseStepMergeToRoot
+			m.appendReleaseOutput("")
+			m.appendReleaseOutput("Starting root merge flow...")
+			// Save state and continue to merge steps
+			m.releaseState.TerminalOutput = make([]string, len(m.releaseOutputBuffer))
+			copy(m.releaseState.TerminalOutput, m.releaseOutputBuffer)
+			SaveReleaseState(m.releaseState)
+			m.updateReleaseButtons()
+			// Execute root merge step
+			m.releaseRunning = true
+			return m, tea.Batch(m.spinner.Tick, m.executeReleaseStep(ReleaseStepMergeToRoot))
+		}
+
+		// No root merge - mark as complete
+		m.releaseState.CurrentStep = ReleaseStepComplete
 
 		// MR created successfully - clear release.json so Ctrl+C goes to MRs list
 		ClearReleaseState()
