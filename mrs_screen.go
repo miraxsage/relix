@@ -411,7 +411,7 @@ func (m model) renderMarkdown() string {
 
 	selected := m.list.SelectedItem()
 	if selected == nil {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
+		return lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
 	}
 
 	style := styles.DarkStyleConfig

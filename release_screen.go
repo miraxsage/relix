@@ -157,6 +157,44 @@ func (m *model) appendReleaseOutput(line string) {
 	m.updateReleaseViewport()
 }
 
+// appendRecoveryMetadata adds recovery metadata to the terminal output at release start
+func (m *model) appendRecoveryMetadata(workDir string, state *ReleaseState) {
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36"))
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, headerStyle.Render("Release recover metadata:"))
+
+	// Get commit IDs for various branches
+	rootCommit := GetBranchCommitID(workDir, "root")
+	originRootCommit := GetBranchCommitID(workDir, "origin/root")
+	originEnvCommit := GetBranchCommitID(workDir, "origin/"+state.Environment.BranchName)
+
+	// Calculate max label width for alignment
+	// Labels: "root:", "origin/root:", "origin/<env>:", "origin/<source>:"
+	sourceBranchLabel := "origin/" + state.SourceBranch + ":"
+	envBranchLabel := "origin/" + state.Environment.BranchName + ":"
+
+	maxWidth := len("origin/root:")
+	if len(envBranchLabel) > maxWidth {
+		maxWidth = len(envBranchLabel)
+	}
+	if state.SourceBranchIsRemote && len(sourceBranchLabel) > maxWidth {
+		maxWidth = len(sourceBranchLabel)
+	}
+
+	// Format string with dynamic width
+	format := fmt.Sprintf("%%-%ds %%s", maxWidth)
+
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, "root:", rootCommit))
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, "origin/root:", originRootCommit))
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, envBranchLabel, originEnvCommit))
+
+	// Only show source branch if it existed remotely on release start
+	if state.SourceBranchIsRemote {
+		originSourceCommit := GetBranchCommitID(workDir, "origin/"+state.SourceBranch)
+		m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, sourceBranchLabel, originSourceCommit))
+	}
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, "") // Empty line after metadata
+}
+
 // updateRelease handles key events on the release screen
 func (m model) updateRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle delete remote branch confirmation modal (second step after abort confirm)
@@ -204,7 +242,7 @@ func (m model) updateRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showAbortConfirm = false
 			m.abortConfirmIndex = 0
 			// If we're at or past push step, ask about remote branch deletion
-			if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushBranches {
+			if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushAndCreateMR {
 				m.showDeleteRemoteConfirm = true
 				m.deleteRemoteConfirmIndex = 0
 				return m, nil
@@ -215,7 +253,7 @@ func (m model) updateRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.abortConfirmIndex == 0 {
 				m.abortConfirmIndex = 0
 				// If we're at or past push step, ask about remote branch deletion
-				if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushBranches {
+				if m.releaseState != nil && m.releaseState.CurrentStep >= ReleaseStepPushAndCreateMR {
 					m.showDeleteRemoteConfirm = true
 					m.deleteRemoteConfirmIndex = 0
 					return m, nil
@@ -563,7 +601,7 @@ func (m model) renderReleaseStatus(width int) string {
 		)
 
 	case ReleaseStepPushAndCreateMR:
-		status = fmt.Sprintf("%s %s %s\nCreating merge request to %s...",
+		status = fmt.Sprintf("%s %s %s\nPushing branches and creating merge request to %s...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render("99%"),
@@ -799,9 +837,13 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 	m.screen = screenRelease
 	m.releaseOutputBuffer = []string{}
 	m.releaseCurrentScreen = ""
+
+	// Add recovery metadata to terminal output
+	m.appendRecoveryMetadata(workDir, state)
+
 	m.initReleaseScreen()
 
-	// Save initial state
+	// Save initial state (includes recovery metadata in terminal output)
 	SaveReleaseState(state)
 
 	// Start execution with spinner
@@ -894,15 +936,20 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 				return releaseStepCompleteMsg{step: step, err: err2, output: output1 + output2}
 			}
 
-			// Step 4.3: Exclude files
+			// Step 4.3: Exclude files - restore from env branch or remove if not exists
 			excluded, _ := GetExcludedFiles(workDir, patterns)
 			var output3 string
 			if len(excluded) > 0 {
-				// Remove excluded files in batches
 				for _, file := range excluded {
 					output3 += fmt.Sprintf("Excluding: %s\n", releaseOrangeStyle.Render(file))
-					rmCmd := fmt.Sprintf("git rm -rf --cached %q", file)
-					executor.RunCommand(rmCmd)
+					// Try to restore file from environment branch (keeps it unchanged)
+					checkoutCmd := fmt.Sprintf("git checkout origin/%s -- %q 2>/dev/null", state.Environment.BranchName, file)
+					_, checkoutErr := executor.RunCommand(checkoutCmd)
+					if checkoutErr != nil {
+						// File doesn't exist in env branch - remove it completely
+						executor.RunCommand(fmt.Sprintf("rm -rf %q", file))
+						executor.RunCommand(fmt.Sprintf("git rm -rf --cached %q 2>/dev/null || true", file))
+					}
 				}
 			}
 
@@ -920,37 +967,41 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			// Escape single quotes and convert actual newlines to \n escape sequences
 			escapedBody := strings.ReplaceAll(body, "'", "'\\''")
 			escapedBody = strings.ReplaceAll(escapedBody, "\n", "\\n")
-			commitCmd := fmt.Sprintf("git add -A && git commit -m %q -m $'%s'", title, escapedBody)
+			// Don't use "git add -A" - files are already staged from checkout
+			commitCmd := fmt.Sprintf("git commit -m %q -m $'%s'", title, escapedBody)
 			output, err = executor.RunCommand(commitCmd)
 
-		case ReleaseStepPushBranches:
+			// After successful commit, clean up any remaining untracked files
+			if err == nil {
+				cleanOutput, _ := executor.RunCommand("git clean -fd")
+				output += cleanOutput
+			}
+
+		case ReleaseStepPushAndCreateMR:
 			// Push source branch to remote (so it's available for next release)
 			// TODO: output1, err1 := executor.RunCommand(cmds.Step6PushSourceBranch())
-			output1, err1 := executor.RunCommand(fmt.Sprintf("git log %s -1 --oneline", cmds.RootBranch()))
+			output1, err1 := executor.RunCommand(fmt.Sprintf("git --no-pager log %s -1 --oneline", cmds.RootBranch()))
 			if err1 != nil {
 				return releaseStepCompleteMsg{step: step, err: err1, output: output1}
 			}
 
 			// Push env release branch to remote
 			output2, err2 := executor.RunCommand(cmds.Step6Push())
+			if err2 != nil {
+				return releaseStepCompleteMsg{step: step, err: err2, output: output1 + output2}
+			}
 			output = output1 + output2
-			err = err2
-
-		case ReleaseStepPushAndCreateMR:
-			// Branches are already pushed in ReleaseStepPushBranches
-			// This step only creates the GitLab MR (handled via API after this step completes)
-			output = "Branches already pushed. Creating merge request...\n"
-			err = nil
+			// MR will be created via API after this step completes
 
 		case ReleaseStepMergeToRoot:
 			// Step 6b: Merge source branch to root and push
 			// TODO: output, err = executor.RunCommand(cmds.StepMergeToRoot())
-			output, err = executor.RunCommand("git log root -1 --oneline")
+			output, err = executor.RunCommand("git --no-pager log root -1 --oneline")
 
 		case ReleaseStepMergeToDevelop:
 			// Step 6c: Merge root to develop and push
 			// TODO: output, err = executor.RunCommand(cmds.StepMergeToDevelop())
-			output, err = executor.RunCommand("git log develop -1 --oneline")
+			output, err = executor.RunCommand("git --no-pager log develop -1 --oneline")
 
 		default:
 			return releaseStepCompleteMsg{step: step, err: nil}
@@ -999,7 +1050,11 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 	state := m.releaseState
 
 	if msg.err != nil {
-		// Handle error
+		// Handle error - display in terminal with pale red color (no background)
+		terminalErrorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		m.appendReleaseOutput("")
+		m.appendReleaseOutput(terminalErrorStyle.Render("ERROR: " + msg.err.Error()))
+
 		state.LastError = &ReleaseError{
 			Step:    msg.step,
 			Message: msg.err.Error(),
@@ -1058,13 +1113,10 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		state.CurrentStep = nextStep
 
 	case ReleaseStepCommit:
-		nextStep = ReleaseStepPushBranches
-		state.CurrentStep = nextStep
-
-	case ReleaseStepPushBranches:
+		// After commit, wait for user to click "Create MR" button
+		// Push will happen when user clicks the button
 		nextStep = ReleaseStepWaitForMR
 		state.CurrentStep = nextStep
-		// Don't continue automatically - wait for user button press
 
 	case ReleaseStepPushAndCreateMR:
 		// Now create the MR via GitLab API

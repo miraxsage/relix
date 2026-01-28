@@ -372,14 +372,14 @@ func (m model) renderConfirmMarkdown(width int) string {
 	versionNB := strings.ReplaceAll(version, "-", nbHyphen)
 	envBranchNB := strings.ReplaceAll(envBranch, "-", nbHyphen)
 
-	// Build step 7 and 8 based on root merge selection
-	step7And8 := ""
+	// Build step 8 and 9 based on root merge selection
+	step8And9 := ""
 	if m.rootMergeSelection {
-		step7And8 = fmt.Sprintf(`7. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
+		step8And9 = fmt.Sprintf(`8. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
 
-8. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
+9. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
 	} else {
-		step7And8 = "7. Open new environment MR in GitLab for manual approval and pipeline execution"
+		step8And9 = "8. Open new environment MR in GitLab for manual approval and pipeline execution"
 	}
 
 	markdown := fmt.Sprintf(`[We are ready]()to release **%s** of selected MRs to **%s** environment!
@@ -392,11 +392,13 @@ This release will go through the following steps:
 
 3. Create environment release branch **release/rpb-%s-%s** from current **%s**
 
-4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous inside version **%s**
+4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous within version **%s**
 
-5. [Push]()**%s** [and]()**release/rpb-%s-%s** [to remote]()
+5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove if new)
 
-6. Create new merge request from **release/rpb-%s-%s** to **%s**
+6. [Push]()**%s** [and]()**release/rpb-%s-%s** [to remote]()
+
+7. Create new merge request from **release/rpb-%s-%s** to **%s**
 
 %s
 
@@ -410,7 +412,7 @@ If you agree, press enter and release it.
 		sourceBranch, version, envBranch, version,
 		sourceBranch, version, envBranch,
 		version, envBranch, envBranch,
-		step7And8,
+		step8And9,
 		sourceBranchNB, versionNB, envBranchNB,
 	)
 

@@ -274,14 +274,16 @@ func (g *GitExecutor) RunCommand(command string) (string, error) {
 	err = cmd.Wait()
 	output := outputBuilder.String()
 
+	// Close PTY to unblock read goroutine (macOS may not EOF automatically after process exits)
+	ptmx.Close()
+
 	// Wait for read goroutine to finish
 	<-readDone
 
 	// Signal done to render loop
 	g.mu.Lock()
 	close(g.doneCh)
-	g.ptyFile.Close()
-	g.ptyFile = nil
+	g.ptyFile = nil // Already closed above
 	g.cmd = nil
 	g.vterm = nil
 	g.mu.Unlock()
@@ -386,6 +388,18 @@ func RemoteBranchExists(workDir, remoteBranch string) bool {
 		return false
 	}
 	return len(strings.TrimSpace(string(output))) > 0
+}
+
+// GetBranchCommitID returns the full commit ID for a branch (local or remote like "origin/branch")
+// Returns empty string if branch doesn't exist
+func GetBranchCommitID(workDir, branch string) string {
+	cmd := exec.Command("git", "rev-parse", branch)
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // FindProjectRoot finds the project root directory by looking for package.json
@@ -620,8 +634,8 @@ func GetNextVersionNumber(workDir, envBranch, currentVersion string) (int, error
 		return 1, nil
 	}
 
-	// No previous release found - this is an error for MVP
-	return 0, fmt.Errorf("no previous release version found in last %s-branch commits", envBranch)
+	// No previous release found - start from v1
+	return 1, nil
 }
 
 // BuildCommitMessage builds the commit message for step 4
