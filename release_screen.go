@@ -114,6 +114,11 @@ func (m *model) updateReleaseButtons() {
 		m.releaseButtons = append(m.releaseButtons, ReleaseButtonCreateMR)
 	}
 
+	// Push root branches is available at step 8 (waiting for root push) and no error
+	if state.CurrentStep == ReleaseStepWaitForRootPush && state.LastError == nil {
+		m.releaseButtons = append(m.releaseButtons, ReleaseButtonPushRoot)
+	}
+
 	// Complete and Open are available after MR creation
 	if state.CurrentStep == ReleaseStepComplete {
 		m.releaseButtons = append(m.releaseButtons, ReleaseButtonComplete)
@@ -375,6 +380,9 @@ func (m model) executeReleaseButton() (tea.Model, tea.Cmd) {
 	case ReleaseButtonCreateMR:
 		return m.startCreateMR()
 
+	case ReleaseButtonPushRoot:
+		return m.startPushRootBranches()
+
 	case ReleaseButtonComplete:
 		return m.completeRelease()
 
@@ -449,7 +457,24 @@ func (m model) renderReleaseContent(width, height int) string {
 		statusLines++
 	}
 	sb.WriteString(status)
-	sb.WriteString("\n\n")
+
+	// Check if hint text wraps (for ReleaseStepWaitForRootPush)
+	hintExtraLines := 0
+	if m.releaseState != nil && m.releaseState.CurrentStep == ReleaseStepWaitForRootPush {
+		hintText := m.renderRootPushHint()
+		hintWidth := lipgloss.Width(hintText)
+		if hintWidth > width {
+			// Calculate how many extra lines the hint takes when wrapped
+			hintExtraLines = (hintWidth - 1) / width
+		}
+	}
+
+	// Skip empty line margin when status takes more than minimum 3 lines or hint text wraps
+	if statusLines > 3 || hintExtraLines > 0 {
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("\n\n")
+	}
 
 	// Horizontal line
 	line := releaseHorizontalLineStyle.Render(strings.Repeat("─", width))
@@ -458,9 +483,12 @@ func (m model) renderReleaseContent(width, height int) string {
 
 	// Calculate dynamic viewport height based on status height
 	// Base calculation: height - 11 (status 3 + top padding 1 + empty after status 1 + line 1 + border 2 + empty before buttons 1 + buttons 1 = 10, plus 1 empty at bottom)
-	// If status takes more than 3 lines, shrink viewport accordingly
+	// If status takes more than 3 lines or hint wraps, shrink viewport accordingly
 	extraStatusLines := statusLines - 3
-	viewportHeight := height - 11 - extraStatusLines
+	viewportHeight := height - 11 - extraStatusLines - hintExtraLines
+	if statusLines > 3 || hintExtraLines > 0 {
+		viewportHeight++ // Compensate for skipped empty line margin
+	}
 	if viewportHeight < 5 {
 		viewportHeight = 5
 	}
@@ -594,28 +622,28 @@ func (m model) renderReleaseStatus(width int) string {
 			releaseOrangeStyle.Render(state.SourceBranch))
 
 	case ReleaseStepWaitForMR:
-		status = fmt.Sprintf("Release is %s\nNow do final step - create its merge request to %s\nPress %s",
+		status = fmt.Sprintf("Release is %s\nNow do next step - create its merge request to %s\nPress %s",
 			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPOSED "),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name),
 			releaseTextActiveStyle.Render("Create MR to "+state.Environment.Name),
 		)
 
 	case ReleaseStepPushAndCreateMR:
-		status = fmt.Sprintf("%s %s %s\nPushing branches and creating merge request to %s...",
+		status = fmt.Sprintf("%s %s %s\nPushing env branch and creating merge request to %s...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render("99%"),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name))
 
-	case ReleaseStepMergeToRoot:
-		status = fmt.Sprintf("%s %s %s\nMerging %s to root...",
-			m.spinner.View(),
-			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render("99%"),
-			releaseOrangeStyle.Render(state.SourceBranch))
+	case ReleaseStepWaitForRootPush:
+		hintText := m.renderRootPushHint()
+		status = fmt.Sprintf("Merge request is %s\nNow push release branch to root and develop:\n%s",
+			releaseSuccessGreenStyle.Render(" CREATED "),
+			hintText,
+		)
 
-	case ReleaseStepMergeToDevelop:
-		status = fmt.Sprintf("%s %s %s\nMerging root to develop...",
+	case ReleaseStepPushRootBranches:
+		status = fmt.Sprintf("%s %s %s\nPushing root branches...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render("99%"))
@@ -688,6 +716,13 @@ func (m model) renderReleaseButtons(width int) string {
 				envName = m.releaseState.Environment.Name
 			}
 			label = fmt.Sprintf("Create MR to %s", envName)
+			if isFocused {
+				style = buttonActiveStyle
+			} else {
+				style = buttonStyle
+			}
+		case ReleaseButtonPushRoot:
+			label = "Push root branches"
 			if isFocused {
 				style = buttonActiveStyle
 			} else {
@@ -978,30 +1013,76 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			}
 
 		case ReleaseStepPushAndCreateMR:
-			// Push source branch to remote (so it's available for next release)
-			// TODO: output1, err1 := executor.RunCommand(cmds.Step6PushSourceBranch())
-			output1, err1 := executor.RunCommand(fmt.Sprintf("git --no-pager log %s -1 --oneline", cmds.RootBranch()))
-			if err1 != nil {
-				return releaseStepCompleteMsg{step: step, err: err1, output: output1}
-			}
-
-			// Push env release branch to remote
-			output2, err2 := executor.RunCommand(cmds.Step6Push())
-			if err2 != nil {
-				return releaseStepCompleteMsg{step: step, err: err2, output: output1 + output2}
-			}
-			output = output1 + output2
+			// Push env release branch to remote (for the MR)
+			// Release root branch will be pushed later when user clicks "Push root branches"
+			output, err = executor.RunCommand(cmds.Step6Push())
 			// MR will be created via API after this step completes
 
-		case ReleaseStepMergeToRoot:
-			// Step 6b: Merge source branch to root and push
-			// TODO: output, err = executor.RunCommand(cmds.StepMergeToRoot())
-			output, err = executor.RunCommand("git --no-pager log root -1 --oneline")
+		case ReleaseStepPushRootBranches:
+			// Step 9: Tag and push branches
+			tagName := state.TagName
 
-		case ReleaseStepMergeToDevelop:
-			// Step 6c: Merge root to develop and push
-			// TODO: output, err = executor.RunCommand(cmds.StepMergeToDevelop())
-			output, err = executor.RunCommand("git --no-pager log develop -1 --oneline")
+			if state.RootMerge {
+				// RootMerge enabled: push release root, merge to root, tag root, push root, merge to develop, push
+
+				// Push release root branch first
+				pushReleaseRootCmd := fmt.Sprintf("git push -u origin %s", state.SourceBranch)
+				output1, err1 := executor.RunCommand(pushReleaseRootCmd)
+				if err1 != nil {
+					return releaseStepCompleteMsg{step: step, err: err1, output: output1}
+				}
+				output = output1
+
+				// Merge source branch to root
+				mergeRootCmd := cmds.StepMergeToRoot()
+				output2, err2 := executor.RunCommand(mergeRootCmd)
+				if err2 != nil {
+					return releaseStepCompleteMsg{step: step, err: err2, output: output + output2}
+				}
+				output += output2
+
+				// Create tag on root (after merge)
+				tagCmd := fmt.Sprintf("git tag %s", tagName)
+				output3, err3 := executor.RunCommand(tagCmd)
+				if err3 != nil {
+					return releaseStepCompleteMsg{step: step, err: err3, output: output + output3}
+				}
+				output += output3
+
+				// Push root with tags
+				pushRootCmd := "git push origin root --tags"
+				output4, err4 := executor.RunCommand(pushRootCmd)
+				if err4 != nil {
+					return releaseStepCompleteMsg{step: step, err: err4, output: output + output4}
+				}
+				output += output4
+
+				// Merge root to develop and push
+				mergeDevelopCmd := cmds.StepMergeToDevelop()
+				output5, err5 := executor.RunCommand(mergeDevelopCmd)
+				if err5 != nil {
+					return releaseStepCompleteMsg{step: step, err: err5, output: output + output5}
+				}
+				output += output5
+			} else {
+				// No RootMerge: tag source branch, push with tags
+
+				// Create tag on source branch
+				tagCmd := fmt.Sprintf("git tag %s", tagName)
+				output1, err1 := executor.RunCommand(tagCmd)
+				if err1 != nil {
+					return releaseStepCompleteMsg{step: step, err: err1, output: output1}
+				}
+
+				// Push source branch with tags
+				pushCmd := fmt.Sprintf("git push origin %s --tags", state.SourceBranch)
+				output2, err2 := executor.RunCommand(pushCmd)
+				if err2 != nil {
+					return releaseStepCompleteMsg{step: step, err: err2, output: output1 + output2}
+				}
+
+				output = output1 + output2
+			}
 
 		default:
 			return releaseStepCompleteMsg{step: step, err: nil}
@@ -1131,13 +1212,8 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		// Create MR asynchronously
 		return m, m.createGitLabMR()
 
-	case ReleaseStepMergeToRoot:
-		// Continue to merge root to develop
-		nextStep = ReleaseStepMergeToDevelop
-		state.CurrentStep = nextStep
-
-	case ReleaseStepMergeToDevelop:
-		// Root merge completed, go to complete
+	case ReleaseStepPushRootBranches:
+		// Root push completed, go to complete
 		nextStep = ReleaseStepComplete
 		state.CurrentStep = nextStep
 
@@ -1157,11 +1233,14 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 	m.updateReleaseButtons()
 
 	// Continue to next step if not waiting
-	if nextStep != ReleaseStepWaitForMR && nextStep != ReleaseStepComplete {
+	if nextStep != ReleaseStepWaitForMR && nextStep != ReleaseStepWaitForRootPush && nextStep != ReleaseStepComplete {
 		m.releaseRunning = true
 		nextCmd = tea.Batch(m.spinner.Tick, m.executeReleaseStep(nextStep))
 	} else if nextStep == ReleaseStepWaitForMR {
 		// Focus on "Create MR" button (index 1: Abort=0, CreateMR=1)
+		m.releaseButtonIndex = 1
+	} else if nextStep == ReleaseStepWaitForRootPush {
+		// Focus on "Push root branches" button (index 1: Abort=0, PushRoot=1)
 		m.releaseButtonIndex = 1
 	} else if nextStep == ReleaseStepComplete {
 		// Release complete (including root merge if enabled)
@@ -1228,48 +1307,37 @@ func (m *model) handleMRCreated(msg releaseMRCreatedMsg) (tea.Model, tea.Cmd) {
 		m.releaseState.TerminalOutput = make([]string, len(m.releaseOutputBuffer))
 		copy(m.releaseState.TerminalOutput, m.releaseOutputBuffer)
 		SaveReleaseState(m.releaseState)
-	} else {
-		m.releaseState.CreatedMRURL = msg.url
-		m.releaseState.CreatedMRIID = msg.iid
-		m.appendReleaseOutput("")
-		m.appendReleaseOutput(fmt.Sprintf("Merge request created: %s", msg.url))
-
-		// Check if root merge is enabled - if so, continue to merge steps
-		if m.releaseState.RootMerge {
-			m.releaseState.CurrentStep = ReleaseStepMergeToRoot
-			m.appendReleaseOutput("")
-			m.appendReleaseOutput("Starting root merge flow...")
-			// Save state and continue to merge steps
-			m.releaseState.TerminalOutput = make([]string, len(m.releaseOutputBuffer))
-			copy(m.releaseState.TerminalOutput, m.releaseOutputBuffer)
-			SaveReleaseState(m.releaseState)
-			m.updateReleaseButtons()
-			// Execute root merge step
-			m.releaseRunning = true
-			return m, tea.Batch(m.spinner.Tick, m.executeReleaseStep(ReleaseStepMergeToRoot))
-		}
-
-		// No root merge - mark as complete
-		m.releaseState.CurrentStep = ReleaseStepComplete
-
-		// MR created successfully - clear release.json so Ctrl+C goes to MRs list
-		ClearReleaseState()
-
-		// Reset selected MRs for next release
-		m.initListScreen()
-		m.updateListSize()
-
-		// Reset version input
-		m.versionInput.SetValue("")
-		m.versionError = ""
-
-		// Reset environment selection
-		m.selectedEnv = nil
-		m.envSelectIndex = 0
+		m.updateReleaseButtons()
+		return m, nil
 	}
 
+	m.releaseState.CreatedMRURL = msg.url
+	m.releaseState.CreatedMRIID = msg.iid
+	m.appendReleaseOutput("")
+	m.appendReleaseOutput(fmt.Sprintf("Merge request created: %s", msg.url))
+
+	// Calculate and store tag name for display
+	vNumber, _ := GetNextVersionNumber(m.releaseState.WorkDir, m.releaseState.Environment.BranchName, m.releaseState.Version)
+	m.releaseState.TagName = fmt.Sprintf("%s-%s-v%d",
+		strings.ToLower(m.releaseState.Environment.Name),
+		m.releaseState.Version,
+		vNumber,
+	)
+
+	// Go to wait for root push step (user must click "Push root branches")
+	m.releaseState.CurrentStep = ReleaseStepWaitForRootPush
+
+	// Save state
+	m.releaseState.TerminalOutput = make([]string, len(m.releaseOutputBuffer))
+	copy(m.releaseState.TerminalOutput, m.releaseOutputBuffer)
+	SaveReleaseState(m.releaseState)
 	m.updateReleaseButtons()
-	return m, nil
+
+	// Focus on "Push root branches" button (index 1: Abort=0, PushRoot=1)
+	m.releaseButtonIndex = 1
+
+	// Open MR URL in Safari (with fallback to default browser)
+	return m, openInSafariWithFallback(msg.url)
 }
 
 // retryRelease retries from the last failed step
@@ -1351,13 +1419,21 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 			m.releaseExecutor = nil
 		}
 
-		// Delete remote branch if requested
+		// Delete remote branches if requested
 		if deleteRemote {
-			cmds := NewReleaseCommands(workDir, version, &m.releaseState.Environment, nil, nil)
-			remoteBranch := cmds.EnvReleaseBranch()
-			deleteCmd := fmt.Sprintf("cd %q && git push origin --delete %s", workDir, remoteBranch)
+			cmds := NewReleaseCommandsWithSourceBranch(workDir, version, &m.releaseState.Environment, nil, nil, m.releaseState.SourceBranch, m.releaseState.SourceBranchIsRemote)
 			exec := NewGitExecutor(workDir, nil)
-			exec.RunCommand(deleteCmd)
+
+			// Delete env release branch (e.g. release/rpb-1.0.0-dev)
+			envBranchCmd := fmt.Sprintf("cd %q && git push origin --delete %s", workDir, cmds.EnvReleaseBranch())
+			exec.RunCommand(envBranchCmd)
+
+			// Delete source/root branch only if it was newly created (not pre-existing on remote)
+			if !m.releaseState.SourceBranchIsRemote {
+				rootBranchCmd := fmt.Sprintf("cd %q && git push origin --delete %s", workDir, cmds.ReleaseRootBranch())
+				exec.RunCommand(rootBranchCmd)
+			}
+
 			exec.Close()
 		}
 
@@ -1405,6 +1481,61 @@ func (m model) startCreateMR() (tea.Model, tea.Cmd) {
 
 	m.releaseRunning = true
 	return m, tea.Batch(m.spinner.Tick, m.executeReleaseStep(ReleaseStepPushAndCreateMR))
+}
+
+// renderRootPushHint returns the hint text for the root push step
+func (m model) renderRootPushHint() string {
+	if m.releaseState == nil {
+		return ""
+	}
+
+	state := m.releaseState
+
+	// Styles for the hint text
+	branchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	tagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+
+	// Get tag name (already calculated and stored in state)
+	tagName := state.TagName
+
+	if state.RootMerge {
+		// With RootMerge: {branch} will be merged to root, tagged as {tag}, then root to develop
+		return fmt.Sprintf("%s %s %s%s %s %s %s%s %s%s",
+			branchStyle.Render(state.SourceBranch),
+			textStyle.Render("will be merged to"),
+			branchStyle.Render("root"),
+			textStyle.Render(","),
+			branchStyle.Render("root"),
+			textStyle.Render("tagged as"),
+			tagStyle.Render(tagName),
+			textStyle.Render(" and merged to"),
+			branchStyle.Render("develop"),
+			textStyle.Render(", finally all pushed to remote"),
+		)
+	}
+
+	// Without RootMerge: {branch} will be tagged as {tag} pushed to remote
+	return fmt.Sprintf("%s %s %s %s",
+		branchStyle.Render(state.SourceBranch),
+		textStyle.Render("will be tagged as"),
+		tagStyle.Render(tagName),
+		textStyle.Render("pushed to remote"),
+	)
+}
+
+// startPushRootBranches initiates the root branch push step
+func (m model) startPushRootBranches() (tea.Model, tea.Cmd) {
+	if m.releaseState == nil {
+		return m, nil
+	}
+
+	m.releaseState.CurrentStep = ReleaseStepPushRootBranches
+	m.updateReleaseButtons()
+	SaveReleaseState(m.releaseState)
+
+	m.releaseRunning = true
+	return m, tea.Batch(m.spinner.Tick, m.executeReleaseStep(ReleaseStepPushRootBranches))
 }
 
 // completeRelease finishes the release and cleans up
@@ -1455,6 +1586,7 @@ func (m *model) resumeRelease(state *ReleaseState) tea.Cmd {
 	// mark as interrupted so user must press Retry to continue
 	if state.LastError == nil &&
 		state.CurrentStep != ReleaseStepWaitForMR &&
+		state.CurrentStep != ReleaseStepWaitForRootPush &&
 		state.CurrentStep != ReleaseStepComplete {
 		state.LastError = &ReleaseError{
 			Step: state.CurrentStep,
@@ -1477,6 +1609,11 @@ func (m *model) resumeRelease(state *ReleaseState) tea.Cmd {
 	// Handle user action steps
 	if state.CurrentStep == ReleaseStepWaitForMR {
 		// Focus on "Create MR" button (index 1: Abort=0, CreateMR=1)
+		m.releaseButtonIndex = 1
+		return nil
+	}
+	if state.CurrentStep == ReleaseStepWaitForRootPush {
+		// Focus on "Push root branches" button (index 1: Abort=0, PushRoot=1)
 		m.releaseButtonIndex = 1
 		return nil
 	}

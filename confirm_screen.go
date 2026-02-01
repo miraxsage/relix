@@ -284,6 +284,7 @@ func (m model) renderVersionSidebarSection(width int, contentHeight int) string 
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
+		Bold(true).
 		Padding(0, 1).
 		Width(width).
 		Height(contentHeight).
@@ -322,12 +323,12 @@ func (m model) renderConfirmPreparing(width int, height int) string {
 		envColor = getEnvBranchColor(m.selectedEnv.Name)
 	}
 	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(envColor))
-	highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("62"))
 
 	var sb strings.Builder
 	sb.WriteString(textStyle.Render("We are almost ready to release ") + envStyle.Render(version) + textStyle.Render(" of selected MRs to ") + envStyle.Render(envName) + textStyle.Render(" environment,"))
 	sb.WriteString("\n")
-	sb.WriteString(textStyle.Render("but there are some ") + highlightStyle.Render("preparing important details") + textStyle.Render(":"))
+	sb.WriteString(textStyle.Render("but there are some ") + highlightStyle.Render(" preparing of important details ") + textStyle.Render(":"))
 	sb.WriteString("\n\n")
 	sb.WriteString(m.spinner.View() + " " + textStyle.Render("Checking remote branch ") + envStyle.Render(sourceBranch) + textStyle.Render("..."))
 
@@ -355,15 +356,23 @@ func (m model) renderConfirmMarkdown(width int) string {
 		sourceBranch = m.releaseState.SourceBranch
 	}
 
+	// Get next v-number for display
+	vNumber := 1
+	if workDir, err := FindProjectRoot(); err == nil && envBranch != "" {
+		if n, err := GetNextVersionNumber(workDir, envBranch, version); err == nil {
+			vNumber = n
+		}
+	}
+
 	// Determine step 1 text based on whether source branch exists remotely
 	// Note: when "checking", the spinner is shown above viewport in renderConfirmContent
 	step1Text := ""
 	sourceBranchExists := m.sourceBranchRemoteStatus == "exists-same" || m.sourceBranchRemoteStatus == "exists-diff" || m.sourceBranchRemoteStatus == "exists"
 	if sourceBranchExists {
-		step1Text = fmt.Sprintf("1. [Use remote branch]()**%s** as cumulative one", sourceBranch)
+		step1Text = fmt.Sprintf("1. Use remote branch **%s** as cumulative one", sourceBranch)
 	} else {
 		// Default to "Create" for new branches or when still checking
-		step1Text = fmt.Sprintf("1. [Create cumulative branch]()**%s** from current root", sourceBranch)
+		step1Text = fmt.Sprintf("1. [ Create cumulative branch ]()**%s** from current root", sourceBranch)
 	}
 
 	// Create non-breaking versions of branch names for ATTENTION line (prevents word wrap at hyphens)
@@ -372,17 +381,26 @@ func (m model) renderConfirmMarkdown(width int) string {
 	versionNB := strings.ReplaceAll(version, "-", nbHyphen)
 	envBranchNB := strings.ReplaceAll(envBranch, "-", nbHyphen)
 
-	// Build step 8 and 9 based on root merge selection
+	// Build tag name for step 9
+	tagName := fmt.Sprintf("%s-%s-v%d", strings.ToLower(envName), version, vNumber)
+
+	// Build step 8-9 based on root merge selection
 	step8And9 := ""
 	if m.rootMergeSelection {
-		step8And9 = fmt.Sprintf(`8. [Merge]()**%s** [to root]()and then [merge new root branch to develop]()
+		step8And9 = fmt.Sprintf(`8. Open new environment MR in browser for manual approval and pipeline execution
 
-9. Open new environment MR in GitLab for manual approval and pipeline execution`, sourceBranch)
+9. ~~Confirm~~ and push **%s** to remote
+
+10. [ Merge ]()**%s** to **root**, tag **root** as **%s** and push it to remote
+
+11. [ Merge ]()**root** to **develop** and push it to remote`, sourceBranch, sourceBranch, tagName)
 	} else {
-		step8And9 = "8. Open new environment MR in GitLab for manual approval and pipeline execution"
+		step8And9 = fmt.Sprintf(`8. Open new environment MR in browser for manual approval and pipeline execution
+
+9. ~~Confirm~~ and tag **%s** as **%s**, then push it to remote`, sourceBranch, tagName)
 	}
 
-	markdown := fmt.Sprintf(`[We are ready]()to release **%s** of selected MRs to **%s** environment!
+	markdown := fmt.Sprintf(`[ We are ready ]()to release **%s v%d** of selected MRs to **%s** environment!
 
 This release will go through the following steps:
 
@@ -392,11 +410,11 @@ This release will go through the following steps:
 
 3. Create environment release branch **release/rpb-%s-%s** from current **%s**
 
-4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number from previous within version **%s**
+4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number **v%d** from previous within version **%s**
 
-5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove if new)
+5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove)
 
-6. [Push]()**%s** [and]()**release/rpb-%s-%s** [to remote]()
+6. ~~Confirm~~ and push **release/rpb-%s-%s** to remote
 
 7. Create new merge request from **release/rpb-%s-%s** to **%s**
 
@@ -406,11 +424,11 @@ This release will go through the following steps:
 
 If you agree, press enter and release it.
 `,
-		version, envName,
+		version, vNumber, envName,
 		step1Text,
 		version, envBranch, envBranch,
-		sourceBranch, version, envBranch, version,
-		sourceBranch, version, envBranch,
+		sourceBranch, version, envBranch, vNumber, version,
+		version, envBranch,
 		version, envBranch, envBranch,
 		step8And9,
 		sourceBranchNB, versionNB, envBranchNB,
@@ -432,8 +450,9 @@ If you agree, press enter and release it.
 	style.Emph.Italic = boolPtr(false)
 	style.Strikethrough.Color = stringPtr("9")
 	style.Strikethrough.CrossedOut = boolPtr(false)
-	style.LinkText.Color = stringPtr("220")
-	style.LinkText.Bold = boolPtr(false)
+	style.LinkText.Color = stringPtr("255")
+	style.LinkText.BackgroundColor = stringPtr("62")
+	style.LinkText.Bold = boolPtr(true)
 	style.H1.Prefix = ""
 
 	renderer, err := glamour.NewTermRenderer(

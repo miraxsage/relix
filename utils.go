@@ -151,3 +151,30 @@ func openInBrowser(url string) tea.Cmd {
 		return nil
 	}
 }
+
+// openInSafariWithFallback opens a URL in Safari, falling back to default browser
+func openInSafariWithFallback(url string) tea.Cmd {
+	return func() tea.Msg {
+		if runtime.GOOS == "darwin" {
+			// Try Safari first
+			cmd := exec.Command("open", "-a", "Safari", url)
+			if err := cmd.Start(); err == nil {
+				return nil
+			}
+		}
+		// Fallback to default browser
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "linux":
+			cmd = exec.Command("xdg-open", url)
+		case "windows":
+			cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		default:
+			return nil
+		}
+		cmd.Start()
+		return nil
+	}
+}

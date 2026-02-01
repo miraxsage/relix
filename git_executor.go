@@ -475,8 +475,8 @@ func NewReleaseCommandsWithSourceBranch(workDir, version string, env *Environmen
 	}
 }
 
-// RootBranch returns the release root branch name (source branch for accumulating MRs)
-func (r *ReleaseCommands) RootBranch() string {
+// ReleaseRootBranch returns the release root branch name (source branch for accumulating MRs)
+func (r *ReleaseCommands) ReleaseRootBranch() string {
 	// Use custom source branch if provided
 	if r.sourceBranch != "" {
 		return r.sourceBranch
@@ -495,10 +495,10 @@ func (r *ReleaseCommands) EnvReleaseBranch() string {
 func (r *ReleaseCommands) Step1CheckoutRoot() string {
 	if r.sourceBranchIsRemote {
 		// Source branch exists remotely - checkout from remote to reliably use it locally
-		return fmt.Sprintf("git checkout -B %s origin/%s", r.RootBranch(), r.RootBranch())
+		return fmt.Sprintf("git checkout -B %s origin/%s", r.ReleaseRootBranch(), r.ReleaseRootBranch())
 	}
 	// Source branch doesn't exist - create from root after pull
-	return fmt.Sprintf("git checkout root && git pull && git checkout -B %s root", r.RootBranch())
+	return fmt.Sprintf("git checkout root && git pull && git checkout -B %s root", r.ReleaseRootBranch())
 }
 
 // Step2MergeBranch returns the command to merge a specific branch
@@ -524,13 +524,13 @@ func (r *ReleaseCommands) Step4RemoveAll() string {
 
 // Step4CheckoutFromRoot returns the command to checkout content from root branch
 func (r *ReleaseCommands) Step4CheckoutFromRoot() string {
-	return fmt.Sprintf("git checkout %s -- .", r.RootBranch())
+	return fmt.Sprintf("git checkout %s -- .", r.ReleaseRootBranch())
 }
 
 // Step6PushSourceBranch returns the command to push source branch to remote
 // This ensures the source branch with all merged MRs is available for the next release
 func (r *ReleaseCommands) Step6PushSourceBranch() string {
-	return fmt.Sprintf("git push -u origin %s", r.RootBranch())
+	return fmt.Sprintf("git push -u origin %s", r.ReleaseRootBranch())
 }
 
 // Step6Push returns the command for step 6 (push only, MR is created via API)
@@ -538,16 +538,15 @@ func (r *ReleaseCommands) Step6Push() string {
 	return fmt.Sprintf("git push -u origin %s", r.EnvReleaseBranch())
 }
 
-// StepMergeToRoot returns the command to merge source branch to root and push
-// This is step 6b: git checkout root && git merge <source branch> && git push
+// StepMergeToRoot returns the command to merge source branch to root
 func (r *ReleaseCommands) StepMergeToRoot() string {
-	return fmt.Sprintf("git checkout root && git merge %s && git push", r.RootBranch())
+	return fmt.Sprintf("git checkout root && git merge --no-edit %s", r.ReleaseRootBranch())
 }
 
 // StepMergeToDevelop returns the command to merge root to develop and push
 // This is step 6c: git checkout develop && git pull && git merge root && git push
 func (r *ReleaseCommands) StepMergeToDevelop() string {
-	return "git checkout develop && git pull && git merge root && git push"
+	return "git checkout develop && git pull && git merge --no-edit root && git push"
 }
 
 // ParseVersionNumber extracts version number from release commit title

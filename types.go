@@ -148,8 +148,8 @@ const (
 	ReleaseStepPushBranches                // Step 5: git push source branch and env release branch to remote
 	ReleaseStepWaitForMR                   // Step 6: waiting for user to press "Create MR" button
 	ReleaseStepPushAndCreateMR             // Step 7: create GitLab MR (branches already pushed)
-	ReleaseStepMergeToRoot                 // Step 6b: merge source branch to root (if root merge enabled)
-	ReleaseStepMergeToDevelop              // Step 6c: merge root to develop (if root merge enabled)
+	ReleaseStepWaitForRootPush             // Step 8: waiting for user to press "Push root branches" button
+	ReleaseStepPushRootBranches            // Step 9: tag/push source branch, merge to root, push root, merge to develop, push develop
 	ReleaseStepComplete                    // Done
 )
 
@@ -189,6 +189,9 @@ type ReleaseState struct {
 	CreatedMRURL string `json:"created_mr_url,omitempty"`
 	CreatedMRIID int    `json:"created_mr_iid,omitempty"`
 
+	// Tag info (created during root push step)
+	TagName string `json:"tag_name,omitempty"`
+
 	// Working directory
 	WorkDir string `json:"work_dir"` // Project root path
 }
@@ -200,6 +203,7 @@ const (
 	ReleaseButtonAbort ReleaseButton = iota
 	ReleaseButtonRetry
 	ReleaseButtonCreateMR
+	ReleaseButtonPushRoot
 	ReleaseButtonComplete
 	ReleaseButtonOpen
 )
