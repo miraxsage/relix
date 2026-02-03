@@ -174,10 +174,12 @@ type ReleaseState struct {
 	ProjectID            int         `json:"project_id"`
 
 	// Progress tracking
-	CurrentStep     ReleaseStep `json:"current_step"`
-	LastSuccessStep ReleaseStep `json:"last_success_step"`
-	CurrentMRIndex  int         `json:"current_mr_index"` // For step 2: which MR we're merging
-	MergedBranches  []string    `json:"merged_branches"`  // Successfully merged branches
+	CurrentStep       ReleaseStep `json:"current_step"`
+	LastSuccessStep   ReleaseStep `json:"last_success_step"`
+	CurrentMRIndex    int         `json:"current_mr_index"` // For step 2: which MR we're merging
+	MergedBranches    []string    `json:"merged_branches"`  // Successfully merged branches
+	TotalSubSteps     int         `json:"total_sub_steps"`
+	CompletedSubSteps int         `json:"completed_sub_steps"`
 
 	// Error info
 	LastError   *ReleaseError `json:"last_error,omitempty"`
@@ -246,6 +248,8 @@ type releaseMRCreatedMsg struct {
 type setProgramMsg struct {
 	program *tea.Program
 }
+
+type releaseSubStepDoneMsg struct{}
 
 // sourceBranchCheckMsg is sent when the source branch remote check completes
 type sourceBranchCheckMsg struct {

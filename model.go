@@ -460,6 +460,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.program = msg.program
 		return m, nil
 
+	case releaseSubStepDoneMsg:
+		if m.releaseState != nil {
+			m.releaseState.CompletedSubSteps++
+		}
+		return m, nil
+
 	case sourceBranchCheckMsg:
 		// Only update if this check is for the current branch name
 		if msg.branchName == m.sourceBranchCheckedName {

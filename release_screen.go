@@ -66,6 +66,23 @@ var (
 					Foreground(lipgloss.Color("240"))
 )
 
+// calculateReleaseTotalSteps returns the total number of substeps for the release
+func calculateReleaseTotalSteps(state *ReleaseState) int {
+	total := 1                     // CheckoutRoot
+	total += len(state.MRBranches) // MergeBranches (one per MR)
+	total += 1                     // CheckoutEnv
+	total += 3                     // CopyContent (checkout env-release + rm all + checkout from root)
+	total += 1                     // Commit
+	total += 1                     // Push env branch
+	total += 1                     // Create MR (API)
+	if state.RootMerge {
+		total += 5 // push release-root, merge to root, tag, push root+tags, merge develop+push
+	} else {
+		total += 2 // tag, push with tags
+	}
+	return total
+}
+
 // initReleaseScreen initializes the release screen
 func (m *model) initReleaseScreen() {
 	if m.width == 0 || m.height == 0 {
@@ -530,20 +547,17 @@ func (m model) renderReleaseStatus(width int) string {
 
 	state := m.releaseState
 
-	// Calculate progress percentage based on merged MRs
-	totalMRs := len(state.MRBranches)
-	mergedMRs := len(state.MergedBranches)
-	var percentage int
-	if totalMRs > 0 {
-		percentage = (mergedMRs * 100) / totalMRs
+	// Calculate progress from substep counters
+	completed := state.CompletedSubSteps
+	total := state.TotalSubSteps
+	if total == 0 {
+		total = 1
 	}
-	// After all merges, show 95% until complete
-	if state.CurrentStep >= ReleaseStepCheckoutEnv && state.CurrentStep < ReleaseStepComplete {
-		percentage = 95
-	}
+	percentage := (completed * 100) / total
 	if state.CurrentStep == ReleaseStepComplete {
 		percentage = 100
 	}
+	progressText := fmt.Sprintf("%d%% [%d/%d]", percentage, completed, state.TotalSubSteps)
 
 	var status string
 
@@ -562,7 +576,7 @@ func (m model) renderReleaseStatus(width int) string {
 				releaseConflictStyle.Render("CONFLICT"))
 			status = fmt.Sprintf("Release is %s on %s because of\n%s\nResolve merge issues and press %s",
 				releaseSuspendedStyle.Render("SUSPENDED"),
-				releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+				releasePercentStyle.Render(progressText),
 				errorType,
 				releaseActiveTextStyle.Render("Retry"),
 			)
@@ -571,7 +585,7 @@ func (m model) renderReleaseStatus(width int) string {
 			cmds := NewReleaseCommandsWithSourceBranch(state.WorkDir, state.Version, &state.Environment, nil, nil, state.SourceBranch, state.SourceBranchIsRemote)
 			status = fmt.Sprintf("Release is %s on %s because of\n%s %s\nFix errors in %s branch, commit them and press %s",
 				releaseSuspendedStyle.Render("SUSPENDED"),
-				releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+				releasePercentStyle.Render(progressText),
 				releaseErrorStyle.Render("ERROR"),
 				state.LastError.Message,
 				releaseOrangeStyle.Render(cmds.ReleaseRootBranch()),
@@ -587,7 +601,7 @@ func (m model) renderReleaseStatus(width int) string {
 			}
 			status = fmt.Sprintf("Release is %s on %s because of\n%s %s\n%s",
 				releaseSuspendedStyle.Render("SUSPENDED"),
-				releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+				releasePercentStyle.Render(progressText),
 				releaseErrorStyle.Render("ERROR"),
 				state.LastError.Message,
 				lastStatusLine,
@@ -602,7 +616,7 @@ func (m model) renderReleaseStatus(width int) string {
 		status = fmt.Sprintf("%s %s %s\nCreating root release branch...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)))
+			releasePercentStyle.Render(progressText))
 
 	case ReleaseStepMergeBranches:
 		branchName := ""
@@ -612,40 +626,41 @@ func (m model) renderReleaseStatus(width int) string {
 		status = fmt.Sprintf("%s %s %s\nMerging %s MR of %d: %s",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+			releasePercentStyle.Render(progressText),
 			ordinal(state.CurrentMRIndex+1),
-			totalMRs,
+			len(state.MRBranches),
 			branchName)
 
 	case ReleaseStepCheckoutEnv:
 		status = fmt.Sprintf("%s %s %s\nCreating environment branch for %s...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+			releasePercentStyle.Render(progressText),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name))
 
 	case ReleaseStepCopyContent:
 		status = fmt.Sprintf("%s %s %s\nCopying content from root branch...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)))
+			releasePercentStyle.Render(progressText))
 
 	case ReleaseStepCommit:
 		status = fmt.Sprintf("%s %s %s\nCreating release commit...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)))
+			releasePercentStyle.Render(progressText))
 
 	case ReleaseStepPushBranches:
 		status = fmt.Sprintf("%s %s %s\nPushing %s and release branch to remote...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render(fmt.Sprintf("%d%%", percentage)),
+			releasePercentStyle.Render(progressText),
 			releaseOrangeStyle.Render(state.SourceBranch))
 
 	case ReleaseStepWaitForMR:
-		status = fmt.Sprintf("Release is %s\nNow do next step - create its merge request to %s\nPress %s",
+		status = fmt.Sprintf("Release is %s %s\nNow do next step - create its merge request to %s\nPress %s",
 			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPOSED "),
+			releasePercentStyle.Render(progressText),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name),
 			releaseTextActiveStyle.Render("Create MR to "+state.Environment.Name),
 		)
@@ -654,21 +669,23 @@ func (m model) renderReleaseStatus(width int) string {
 		status = fmt.Sprintf("%s %s %s\nPushing env branch and creating merge request to %s...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render("99%"),
+			releasePercentStyle.Render(progressText),
 			getReleaseEnvStyle(state.Environment.Name).Render(state.Environment.Name))
 
 	case ReleaseStepWaitForRootPush:
 		hintText := m.renderRootPushHint()
 		pipelineStatus := m.renderPipelineStatus()
 		if pipelineStatus != "" {
-			status = fmt.Sprintf("Merge request is %s\n%s\nNow you can push release branch to root and develop:\n%s",
+			status = fmt.Sprintf("Merge request is %s %s\n%s\nNow you can push release branch to root and develop:\n%s",
 				releaseSuccessGreenStyle.Render(" CREATED "),
+				releasePercentStyle.Render(progressText),
 				pipelineStatus,
 				hintText,
 			)
 		} else {
-			status = fmt.Sprintf("Merge request is %s\nNow you can push release branch to root and develop:\n%s",
+			status = fmt.Sprintf("Merge request is %s %s\nNow you can push release branch to root and develop:\n%s",
 				releaseSuccessGreenStyle.Render(" CREATED "),
+				releasePercentStyle.Render(progressText),
 				hintText,
 			)
 		}
@@ -677,7 +694,7 @@ func (m model) renderReleaseStatus(width int) string {
 		status = fmt.Sprintf("%s %s %s\nPushing root branches...",
 			m.spinner.View(),
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
-			releasePercentStyle.Render("99%"))
+			releasePercentStyle.Render(progressText))
 
 	case ReleaseStepComplete:
 		status = fmt.Sprintf("Release is %s\nPress %s to open MR link, or press\n%s to exit this release screen",
@@ -906,6 +923,9 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 		WorkDir:              workDir,
 	}
 
+	state.TotalSubSteps = calculateReleaseTotalSteps(state)
+	state.CompletedSubSteps = 0
+
 	m.releaseState = state
 	m.screen = screenRelease
 	m.releaseOutputBuffer = []string{}
@@ -1001,12 +1021,14 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			if checkoutErr != nil {
 				return releaseStepCompleteMsg{step: step, err: checkoutErr, output: checkoutOutput}
 			}
+			m.program.Send(releaseSubStepDoneMsg{})
 
 			// Step 4.1: Remove all files
 			output1, err1 := executor.RunCommand(cmds.Step4RemoveAll())
 			if err1 != nil {
 				return releaseStepCompleteMsg{step: step, err: err1, output: checkoutOutput + output1}
 			}
+			m.program.Send(releaseSubStepDoneMsg{})
 
 			// Step 4.2: Checkout from root
 			output2, err2 := executor.RunCommand(cmds.Step4CheckoutFromRoot())
@@ -1030,6 +1052,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					}
 				}
 			}
+			m.program.Send(releaseSubStepDoneMsg{})
 
 			output = checkoutOutput + output1 + output2 + output3
 
@@ -1075,6 +1098,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					return releaseStepCompleteMsg{step: step, err: err1, output: output1}
 				}
 				output = output1
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				// Merge source branch to root
 				output2, err2 := executor.RunCommands(cmds.StepMergeToRoot())
@@ -1082,6 +1106,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					return releaseStepCompleteMsg{step: step, err: err2, output: output + output2}
 				}
 				output += output2
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				// Create tag on root (after merge)
 				tagCmd := fmt.Sprintf("git tag %s", tagName)
@@ -1090,6 +1115,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					return releaseStepCompleteMsg{step: step, err: err3, output: output + output3}
 				}
 				output += output3
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				// Push root with tags
 				pushRootCmd := "git push origin root --tags"
@@ -1098,6 +1124,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					return releaseStepCompleteMsg{step: step, err: err4, output: output + output4}
 				}
 				output += output4
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				// Merge root to develop and push
 				output5, err5 := executor.RunCommands(cmds.StepMergeToDevelop())
@@ -1105,6 +1132,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 					return releaseStepCompleteMsg{step: step, err: err5, output: output + output5}
 				}
 				output += output5
+				m.program.Send(releaseSubStepDoneMsg{})
 			} else {
 				// No RootMerge: tag source branch, push with tags
 
@@ -1114,6 +1142,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 				if err1 != nil {
 					return releaseStepCompleteMsg{step: step, err: err1, output: output1}
 				}
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				// Push source branch with tags
 				pushCmd := fmt.Sprintf("git push origin %s --tags", state.SourceBranch)
@@ -1121,6 +1150,7 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 				if err2 != nil {
 					return releaseStepCompleteMsg{step: step, err: err2, output: output1 + output2}
 				}
+				m.program.Send(releaseSubStepDoneMsg{})
 
 				output = output1 + output2
 			}
@@ -1228,11 +1258,13 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 
 	switch msg.step {
 	case ReleaseStepCheckoutRoot:
+		state.CompletedSubSteps++
 		nextStep = ReleaseStepMergeBranches
 		state.CurrentStep = nextStep
 		state.CurrentMRIndex = 0
 
 	case ReleaseStepMergeBranches:
+		state.CompletedSubSteps++
 		// Mark current branch as merged
 		if state.CurrentMRIndex < len(state.MRBranches) {
 			state.MergedBranches = append(state.MergedBranches, state.MRBranches[state.CurrentMRIndex])
@@ -1249,20 +1281,24 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		}
 
 	case ReleaseStepCheckoutEnv:
+		state.CompletedSubSteps++
 		nextStep = ReleaseStepCopyContent
 		state.CurrentStep = nextStep
 
 	case ReleaseStepCopyContent:
+		// substeps already incremented via releaseSubStepDoneMsg
 		nextStep = ReleaseStepCommit
 		state.CurrentStep = nextStep
 
 	case ReleaseStepCommit:
+		state.CompletedSubSteps++
 		// After commit, wait for user to click "Create MR" button
 		// Push will happen when user clicks the button
 		nextStep = ReleaseStepWaitForMR
 		state.CurrentStep = nextStep
 
 	case ReleaseStepPushAndCreateMR:
+		state.CompletedSubSteps++
 		// Now create the MR via GitLab API
 		// After MR is created, handleMRCreated will trigger root merge if enabled
 		state.CurrentStep = ReleaseStepPushAndCreateMR // Keep same step until MR is created
@@ -1276,6 +1312,7 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		return m, m.createGitLabMR()
 
 	case ReleaseStepPushRootBranches:
+		// substeps already incremented via releaseSubStepDoneMsg
 		// Root push completed, go to complete
 		nextStep = ReleaseStepComplete
 		state.CurrentStep = nextStep
@@ -1376,6 +1413,7 @@ func (m *model) handleMRCreated(msg releaseMRCreatedMsg) (tea.Model, tea.Cmd) {
 
 	m.releaseState.CreatedMRURL = msg.url
 	m.releaseState.CreatedMRIID = msg.iid
+	m.releaseState.CompletedSubSteps++ // MR created via API = 1 substep
 	m.appendReleaseOutput("")
 	m.appendReleaseOutput(fmt.Sprintf("Merge request created: %s", msg.url))
 
@@ -1640,6 +1678,9 @@ func (m model) completeRelease() (tea.Model, tea.Cmd) {
 
 // resumeRelease resumes from saved release state
 func (m *model) resumeRelease(state *ReleaseState) tea.Cmd {
+	// Recalculate total for backward compat with saved state
+	state.TotalSubSteps = calculateReleaseTotalSteps(state)
+
 	m.releaseState = state
 	m.screen = screenRelease
 	m.releaseCurrentScreen = ""
