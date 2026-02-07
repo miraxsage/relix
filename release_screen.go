@@ -1373,10 +1373,6 @@ func (m *model) createGitLabMR() tea.Cmd {
 		state := m.releaseState
 		client := NewGitLabClient(m.creds.GitLabURL, m.creds.Token)
 
-		// Get commit info for title/description
-		vNumber, _ := GetNextVersionNumber(state.WorkDir, state.Environment.BranchName, state.Version)
-		title, body := BuildCommitMessage(state.Version, state.Environment.BranchName, vNumber, state.MRBranches)
-
 		cmds := NewReleaseCommands(state.WorkDir, state.Version, &state.Environment, nil, nil)
 		sourceBranch := cmds.EnvReleaseBranch()
 		targetBranch := state.Environment.BranchName
@@ -1767,8 +1763,8 @@ func (m *model) startPipelineObserver() tea.Cmd {
 	m.pipelineStatus = &PipelineStatus{
 		Stage: PipelineStageLoading,
 	}
-	// Return first check immediately
-	return m.checkPipelineStatus()
+	// Return first check immediately, with spinner tick to keep animation running
+	return tea.Batch(m.spinner.Tick, m.checkPipelineStatus())
 }
 
 // stopPipelineObserver stops the pipeline observer
@@ -1922,8 +1918,8 @@ func (m *model) checkPipelineStatus() tea.Cmd {
 				// "created" = job exists but not yet scheduled; "manual" = awaiting manual trigger
 				// Neither means the job is actively running
 			case "skipped":
-				// Skipped jobs don't count towards failure - they just weren't needed
-				status.TotalJobs-- // Remove from total
+				// Skipped jobs don't count towards failure, but keep them in total
+				// to maintain consistent denominator (e.g., "1/2 failed" not "1/1")
 			}
 		}
 
