@@ -333,13 +333,15 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Ignore q and esc - only ctrl+c quits
 		return m, nil
 	case "enter":
-		// Proceed to environment selection if MRs are selected
-		if len(m.selectedMRs) > 0 {
-			m.screen = screenEnvSelect
-			// Only reset index if no environment was previously selected
-			if m.selectedEnv == nil {
-				m.envSelectIndex = 0
-			}
+		// Don't proceed if MRs failed to load
+		if m.mrsLoadError {
+			return m, nil
+		}
+		// Proceed to environment selection (MRs selection is optional for prod releases)
+		m.screen = screenEnvSelect
+		// Only reset index if no environment was previously selected
+		if m.selectedEnv == nil {
+			m.envSelectIndex = 0
 		}
 		return m, nil
 	case "o":

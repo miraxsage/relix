@@ -37,8 +37,9 @@ type model struct {
 	ready       bool
 	creds       *Credentials
 	selectedMRs map[int]bool // Track selected MRs by IID
-	loadingMRs  bool         // Loading modal for MRs
-	mrsLoaded   bool         // True after first MR load completes
+	loadingMRs   bool // Loading modal for MRs
+	mrsLoaded    bool // True after first MR load completes
+	mrsLoadError bool // True if last MR load failed
 
 	// Environment selection screen
 	environments   []Environment
@@ -364,6 +365,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadingMRs = false
 		m.mrsLoaded = true
 		if msg.err != nil {
+			m.mrsLoadError = true
 			m.closeAllModals()
 			m.showErrorModal = true
 			m.errorModalMsg = msg.err.Error()
@@ -372,6 +374,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(m.renderMarkdown())
 			}
 		} else {
+			m.mrsLoadError = false
 			// Sort MRs: non-drafts first (by date newest first), then drafts (by date newest first)
 			sort.Slice(msg.mrs, func(i, j int) bool {
 				// Both drafts or both non-drafts: sort by date (newest first)
