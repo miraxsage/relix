@@ -105,8 +105,19 @@ type model struct {
 	releaseNeedEmptyLineAfterCommand bool // Flag to add empty line after command output if needed
 
 	// Pipeline observer
-	pipelineObserving bool
-	pipelineStatus    *PipelineStatus
+	pipelineObserving    bool
+	pipelineStatus       *PipelineStatus
+	pipelineFailNotified bool // Track if we already sent a failure notification
+
+	// Release history
+	historyList        list.Model
+	historyEntries     []HistoryIndexEntry
+	historySelected    *ReleaseHistoryEntry
+	historyDetailTab   int // 0=MRs, 1=Meta, 2=Logs
+	historyLogsViewport viewport.Model
+	historyMRViewport  viewport.Model
+	historyMRIndex     int  // Selected MR in detail MRs tab
+	loadingHistory     bool
 }
 
 // NewModel creates a new application model
@@ -181,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Block all input during loading states
-		if m.loading || m.loadingProjects || m.loadingMRs {
+		if m.loading || m.loadingProjects || m.loadingMRs || m.loadingHistory {
 			return m, nil
 		}
 
@@ -223,6 +234,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAuth(msg)
 		case screenError:
 			return m.updateError(msg)
+		case screenHome:
+			return m.updateHome(msg)
 		case screenMain:
 			return m.updateList(msg)
 		case screenEnvSelect:
@@ -237,6 +250,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateConfirm(msg)
 		case screenRelease:
 			return m.updateRelease(msg)
+		case screenHistoryList:
+			return m.updateHistoryList(msg)
+		case screenHistoryDetail:
+			return m.updateHistoryDetail(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -254,6 +271,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.releaseExecutor != nil {
 				m.releaseExecutor.Resize(uint16(m.height-10), uint16(m.width-sidebarWidth(m.width)-10))
 			}
+		}
+		if m.screen == screenHistoryList {
+			m.updateHistoryListSize()
+		}
+		if m.screen == screenHistoryDetail {
+			m.initHistoryDetailScreen()
 		}
 
 	case checkCredsMsg:
@@ -278,10 +301,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.resumeRelease(releaseState)
 			}
 
-			m.screen = screenMain
-			m.initListScreen()
-			m.updateListSize()
-
 			// Load saved project from config
 			if config, err := LoadConfig(); err == nil && config.SelectedProjectID != 0 {
 				m.selectedProject = &Project{
@@ -290,21 +309,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					PathWithNamespace: config.SelectedProjectPath,
 					NameWithNamespace: config.SelectedProjectName,
 				}
-				// Project saved - fetch MRs directly, skip project loading
-				m.loadingMRs = true
-				return m, tea.Batch(m.spinner.Tick, m.fetchMRs())
 			}
 
-			// No project saved - show project selector and load projects
-			m.showProjectSelector = true
-			m.loadingProjects = true
-			return m, tea.Batch(m.spinner.Tick, m.fetchProjects())
+			m.screen = screenHome
 		}
 		// No credentials - show auth screen
-		m.screen = screenAuth
+		if msg.creds == nil {
+			m.screen = screenAuth
+		}
 
 	case spinner.TickMsg:
-		if m.loading || m.loadingProjects || m.loadingMRs || m.releaseRunning || m.sourceBranchRemoteStatus == "checking" || (m.pipelineObserving && m.pipelineStatus != nil && m.pipelineStatus.Stage != PipelineStageCompleted && m.pipelineStatus.Stage != PipelineStageFailed) {
+		if m.loading || m.loadingProjects || m.loadingMRs || m.loadingHistory || m.releaseRunning || m.sourceBranchRemoteStatus == "checking" || (m.pipelineObserving && m.pipelineStatus != nil && m.pipelineStatus.Stage != PipelineStageCompleted && m.pipelineStatus.Stage != PipelineStageFailed) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -325,10 +340,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.creds = creds
 
-			m.screen = screenMain
-			m.initListScreen()
-			m.updateListSize()
-
 			// Load saved project from config
 			if config, err := LoadConfig(); err == nil && config.SelectedProjectID != 0 {
 				m.selectedProject = &Project{
@@ -337,15 +348,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					PathWithNamespace: config.SelectedProjectPath,
 					NameWithNamespace: config.SelectedProjectName,
 				}
-				// Project saved - fetch MRs directly, skip project loading
-				m.loadingMRs = true
-				return m, tea.Batch(m.spinner.Tick, m.fetchMRs())
 			}
 
-			// No project saved - show project selector and load projects
-			m.showProjectSelector = true
-			m.loadingProjects = true
-			return m, tea.Batch(m.spinner.Tick, m.fetchProjects())
+			m.screen = screenHome
 		}
 
 	case fetchProjectsMsg:
@@ -499,6 +504,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pipelineStatusMsg:
 		return m.handlePipelineStatus(msg)
+
+	case fetchHistoryMsg:
+		m.loadingHistory = false
+		if msg.err != nil {
+			m.closeAllModals()
+			m.showErrorModal = true
+			m.errorModalMsg = "Failed to load history: " + msg.err.Error()
+		} else {
+			m.historyEntries = msg.entries
+			items := make([]list.Item, len(msg.entries))
+			for i, entry := range msg.entries {
+				items[i] = historyListItem{entry: entry}
+			}
+			m.historyList.SetItems(items)
+			m.historyList.Title = fmt.Sprintf("Releases History (%d)", len(msg.entries))
+		}
+		return m, nil
+
+	case loadHistoryDetailMsg:
+		m.loadingHistory = false
+		if msg.err != nil {
+			m.closeAllModals()
+			m.showErrorModal = true
+			m.errorModalMsg = "Failed to load release details: " + msg.err.Error()
+		} else if m.screen == screenHistoryList {
+			// Only navigate to detail if still on the history list screen
+			m.historySelected = msg.entry
+			m.historyDetailTab = 0
+			m.historyMRIndex = 0
+			m.screen = screenHistoryDetail
+			m.initHistoryDetailScreen()
+		}
+		return m, nil
 	}
 
 	// Update inputs if on auth screen (for non-KeyMsg messages like Blink)
@@ -544,6 +582,8 @@ func (m model) View() string {
 		view = m.viewAuth()
 	case screenError:
 		view = m.viewError()
+	case screenHome:
+		view = m.viewHome()
 	case screenMain:
 		view = m.viewList()
 	case screenEnvSelect:
@@ -558,10 +598,14 @@ func (m model) View() string {
 		view = m.viewConfirm()
 	case screenRelease:
 		view = m.viewRelease()
+	case screenHistoryList:
+		view = m.viewHistoryList()
+	case screenHistoryDetail:
+		view = m.viewHistoryDetail()
 	}
 
-	// Overlay loading modal if loading MRs
-	if m.loadingMRs {
+	// Overlay loading modal if loading MRs or history
+	if m.loadingMRs || m.loadingHistory {
 		view = overlayLoadingModal(m.spinner.View(), view, m.width, m.height)
 	}
 

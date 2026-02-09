@@ -103,4 +103,46 @@ var (
 				Background(lipgloss.Color("196")).
 				Bold(true).
 				Padding(0, 2)
+
+	// Home screen styles
+	homeTitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("62"))
+
+	homeMenuItemStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("189"))
+
+	homeMenuKeyStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("105"))
+
+	homeVersionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("60"))
+
+	// History screen styles
+	historyTabActiveStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("62")).
+				Padding(0, 2)
+
+	historyTabStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("60")).
+			Padding(0, 2)
+
+	historyHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("60"))
+
+	historyStatusCompletedStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("42"))
+
+	historyStatusAbortedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("203"))
+
+	historyMetaLabelStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("105"))
+
+	historyMetaValueStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("189"))
 )

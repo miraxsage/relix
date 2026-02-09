@@ -1467,6 +1467,16 @@ func (m model) abortRelease() (tea.Model, tea.Cmd) {
 	m.stopPipelineObserver()
 	m.pipelineStatus = nil
 
+	// Save to history before cleanup
+	if m.releaseState != nil {
+		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
+		if m.releaseCurrentScreen != "" {
+			lines := strings.Split(m.releaseCurrentScreen, "\n")
+			terminalOutput = append(terminalOutput, lines...)
+		}
+		SaveReleaseHistory(m.releaseState, "aborted", terminalOutput)
+	}
+
 	if m.releaseState != nil {
 		workDir := m.releaseState.WorkDir
 		version := m.releaseState.Version
@@ -1497,18 +1507,17 @@ func (m model) abortRelease() (tea.Model, tea.Cmd) {
 	m.releaseRunning = false
 
 	// Reset selections for next release
-	(&m).initListScreen()
-	(&m).updateListSize()
+	m.selectedMRs = make(map[int]bool)
 	m.selectedEnv = nil
 	m.envSelectIndex = 0
 	m.versionInput.SetValue("")
 	m.versionError = ""
+	m.mrsLoaded = false
 
-	// Go back to main screen and reload MRs
-	m.screen = screenMain
-	m.loadingMRs = true
+	// Go back to home screen
+	m.screen = screenHome
 
-	return m, tea.Batch(m.spinner.Tick, m.fetchMRs())
+	return m, nil
 }
 
 // abortReleaseWithRemoteDeletion cleans up and aborts the release, optionally deleting remote branch
@@ -1516,6 +1525,16 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 	// Stop pipeline observer
 	m.stopPipelineObserver()
 	m.pipelineStatus = nil
+
+	// Save to history before cleanup
+	if m.releaseState != nil {
+		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
+		if m.releaseCurrentScreen != "" {
+			lines := strings.Split(m.releaseCurrentScreen, "\n")
+			terminalOutput = append(terminalOutput, lines...)
+		}
+		SaveReleaseHistory(m.releaseState, "aborted", terminalOutput)
+	}
 
 	if m.releaseState != nil {
 		workDir := m.releaseState.WorkDir
@@ -1563,18 +1582,17 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 	m.releaseRunning = false
 
 	// Reset selections for next release
-	(&m).initListScreen()
-	(&m).updateListSize()
+	m.selectedMRs = make(map[int]bool)
 	m.selectedEnv = nil
 	m.envSelectIndex = 0
 	m.versionInput.SetValue("")
 	m.versionError = ""
+	m.mrsLoaded = false
 
-	// Go back to main screen and reload MRs
-	m.screen = screenMain
-	m.loadingMRs = true
+	// Go back to home screen
+	m.screen = screenHome
 
-	return m, tea.Batch(m.spinner.Tick, m.fetchMRs())
+	return m, nil
 }
 
 // startCreateMR initiates the push and MR creation
@@ -1656,6 +1674,16 @@ func (m model) completeRelease() (tea.Model, tea.Cmd) {
 	m.stopPipelineObserver()
 	m.pipelineStatus = nil
 
+	// Save to history before clearing state
+	if m.releaseState != nil {
+		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
+		if m.releaseCurrentScreen != "" {
+			lines := strings.Split(m.releaseCurrentScreen, "\n")
+			terminalOutput = append(terminalOutput, lines...)
+		}
+		SaveReleaseHistory(m.releaseState, "completed", terminalOutput)
+	}
+
 	ClearReleaseState()
 	m.releaseState = nil
 	m.releaseOutputBuffer = nil
@@ -1663,18 +1691,17 @@ func (m model) completeRelease() (tea.Model, tea.Cmd) {
 	m.releaseRunning = false
 
 	// Reset selections for next release
-	(&m).initListScreen()
-	(&m).updateListSize()
+	m.selectedMRs = make(map[int]bool)
 	m.selectedEnv = nil
 	m.envSelectIndex = 0
 	m.versionInput.SetValue("")
 	m.versionError = ""
+	m.mrsLoaded = false
 
-	// Go back to main screen and reload MRs
-	m.screen = screenMain
-	m.loadingMRs = true
+	// Go back to home screen
+	m.screen = screenHome
 
-	return m, tea.Batch(m.spinner.Tick, m.fetchMRs())
+	return m, nil
 }
 
 // resumeRelease resumes from saved release state
@@ -1765,6 +1792,7 @@ func delayedStartRelease() tea.Cmd {
 // startPipelineObserver starts the pipeline observer and returns the first tick command
 func (m *model) startPipelineObserver() tea.Cmd {
 	m.pipelineObserving = true
+	m.pipelineFailNotified = false
 	m.pipelineStatus = &PipelineStatus{
 		Stage: PipelineStageLoading,
 	}
@@ -1992,15 +2020,23 @@ func (m *model) handlePipelineStatus(msg pipelineStatusMsg) (tea.Model, tea.Cmd)
 	// Update buttons to show/hide Open Pipeline button based on pipeline URL
 	m.updateReleaseButtons()
 
-	// Check if we reached a terminal state
+	// Check if we reached a terminal state — only stop on completion
 	if m.pipelineStatus != nil {
 		switch m.pipelineStatus.Stage {
 		case PipelineStageCompleted:
+			m.pipelineFailNotified = false
 			m.sendPipelineNotification(true)
 			return m, nil
 		case PipelineStageFailed:
-			m.sendPipelineNotification(false)
-			return m, nil
+			// Don't stop observing on failure — user may restart the pipeline.
+			// Send notification only once per failure episode.
+			if !m.pipelineFailNotified {
+				m.pipelineFailNotified = true
+				m.sendPipelineNotification(false)
+			}
+		default:
+			// Reset failure notification flag when pipeline recovers (e.g. restarted)
+			m.pipelineFailNotified = false
 		}
 	}
 
@@ -2046,7 +2082,7 @@ func (m *model) renderPipelineStatus() string {
 		if status.FailedJobs > 0 {
 			failText = fmt.Sprintf("[4/4] Pipeline failed (%d/%d jobs failed)", status.FailedJobs, status.TotalJobs)
 		}
-		line = failedStyle.Render(failText)
+		line = m.spinner.View() + " " + failedStyle.Render(failText) + " " + loadingStyle.Render("(observing)")
 	}
 
 	// Add error indicator if there was a check failure

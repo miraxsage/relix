@@ -14,6 +14,7 @@ const (
 	screenLoading screen = iota
 	screenAuth
 	screenError
+	screenHome
 	screenMain
 	screenEnvSelect
 	screenVersion
@@ -21,6 +22,8 @@ const (
 	screenRootMerge
 	screenConfirm
 	screenRelease
+	screenHistoryList
+	screenHistoryDetail
 )
 
 // Environment represents a deployment environment
@@ -309,4 +312,50 @@ type pipelineTickMsg struct{}
 type pipelineStatusMsg struct {
 	status *PipelineStatus
 	err    error
+}
+
+// HistoryIndexEntry represents a single entry in the history index (for quick list display)
+type HistoryIndexEntry struct {
+	ID          string    `json:"id"`
+	Tag         string    `json:"tag"`
+	Environment string    `json:"environment"`
+	EnvColor    string    `json:"-"` // populated at runtime from environment name
+	DateTime    time.Time `json:"datetime"`
+	MRCount     int       `json:"mr_count"`
+	Status      string    `json:"status"` // "completed" or "aborted"
+	Version     string    `json:"version"`
+}
+
+// ReleaseHistoryEntry represents full release details stored in individual files
+type ReleaseHistoryEntry struct {
+	HistoryIndexEntry
+	MRBranches     []string `json:"mr_branches"`
+	SourceBranch   string   `json:"source_branch"`
+	EnvBranch      string   `json:"env_branch"`
+	RootMerge      bool     `json:"root_merge"`
+	CreatedMRURL   string   `json:"created_mr_url"`
+	TerminalOutput []string `json:"terminal_output"`
+}
+
+// fetchHistoryMsg is sent when history index is loaded
+type fetchHistoryMsg struct {
+	entries []HistoryIndexEntry
+	err     error
+}
+
+// loadHistoryDetailMsg is sent when a history detail is loaded
+type loadHistoryDetailMsg struct {
+	entry *ReleaseHistoryEntry
+	err   error
+}
+
+// historyListItem implements list.Item for the history list
+type historyListItem struct {
+	entry HistoryIndexEntry
+}
+
+func (i historyListItem) Title() string       { return i.entry.Tag }
+func (i historyListItem) Description() string { return i.entry.Environment }
+func (i historyListItem) FilterValue() string {
+	return i.entry.Tag + " " + i.entry.Environment + " " + i.entry.Version
 }

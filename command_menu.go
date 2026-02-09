@@ -107,16 +107,18 @@ func (m model) overlayCommandMenu(background string) string {
 	b.WriteString("\n")
 
 	for i, cmd := range commands {
-		var itemStyle lipgloss.Style
+		var nameStyle lipgloss.Style
 		prefix := "  "
 		if i == m.commandMenuIndex {
-			itemStyle = commandItemSelectedStyle
+			nameStyle = commandItemSelectedStyle
 			prefix = "> "
 		} else {
-			itemStyle = commandItemStyle
+			nameStyle = commandItemStyle
 		}
 
-		b.WriteString(itemStyle.Render(fmt.Sprintf("%s%-8s", prefix, cmd.name)) + commandDescStyle.Render(" - "+cmd.desc))
+		b.WriteString(nameStyle.Render(fmt.Sprintf("%s%s", prefix, cmd.name)))
+		b.WriteString("\n")
+		b.WriteString(commandDescStyle.Render("    " + cmd.desc))
 		b.WriteString("\n")
 	}
 
