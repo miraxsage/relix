@@ -382,8 +382,8 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.viewport.HalfViewDown()
 		return m, nil
 	case "u":
-		// Half page up in viewport
-		m.viewport.HalfViewUp()
+		// Go back to home screen
+		m.screen = screenHome
 		return m, nil
 	}
 
@@ -528,7 +528,7 @@ func (m model) viewList() string {
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	// Help footer (centered)
-	helpText := "j/k/g/G: nav • space: select • enter: proceed • o: open • r: reload • /: commands"
+	helpText := "j/k/g/G: nav • space: select • enter: proceed • o: open • r: reload • u: home • /: commands"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
