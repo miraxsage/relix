@@ -138,6 +138,45 @@ func LoadHistoryIndex() ([]HistoryIndexEntry, error) {
 	return entries, nil
 }
 
+// DeleteHistoryEntries removes the specified entries from the index and deletes their detail files
+func DeleteHistoryEntries(ids map[string]bool) error {
+	dir, err := getReleasesDir()
+	if err != nil {
+		return err
+	}
+
+	// Load current index
+	index, err := LoadHistoryIndex()
+	if err != nil {
+		return fmt.Errorf("load index: %w", err)
+	}
+
+	// Filter out deleted entries
+	filtered := make([]HistoryIndexEntry, 0, len(index))
+	for _, entry := range index {
+		if !ids[entry.ID] {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	// Write back filtered index
+	indexPath := filepath.Join(dir, historyIndexFile)
+	indexData, err := json.MarshalIndent(filtered, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal index: %w", err)
+	}
+	if err := os.WriteFile(indexPath, indexData, 0o644); err != nil {
+		return fmt.Errorf("write index: %w", err)
+	}
+
+	// Delete detail files (best effort)
+	for id := range ids {
+		os.Remove(filepath.Join(dir, id+".json"))
+	}
+
+	return nil
+}
+
 // LoadHistoryDetail loads full details for a specific release
 func LoadHistoryDetail(id string) (*ReleaseHistoryEntry, error) {
 	dir, err := getReleasesDir()

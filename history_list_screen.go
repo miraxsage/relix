@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,7 +12,9 @@ import (
 
 // historyDelegate implements list.ItemDelegate for history list items
 type historyDelegate struct {
-	width int
+	width       int
+	selectMode  bool
+	selectedIDs map[string]bool
 }
 
 func newHistoryDelegate(width int) historyDelegate {
@@ -61,11 +64,21 @@ func (d historyDelegate) Render(w io.Writer, m list.Model, index int, item list.
 		statusDot = historyStatusAbortedStyle.Render("●")
 	}
 
+	// Build checkbox prefix in select mode
+	checkbox := ""
+	if d.selectMode {
+		if d.selectedIDs[entry.ID] {
+			checkbox = "[✓] "
+		} else {
+			checkbox = "[ ] "
+		}
+	}
+
 	// Build line
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
 	dateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
 
-	line := statusDot + " " + textStyle.Render(tag) + " " + styledEnv + " " + dateStyle.Render(dateStr) + " " + textStyle.Render(mrs)
+	line := checkbox + statusDot + " " + textStyle.Render(tag) + " " + styledEnv + " " + dateStyle.Render(dateStr) + " " + textStyle.Render(mrs)
 
 	// Apply selection style
 	if isSelected {
@@ -123,6 +136,17 @@ func (m *model) updateHistoryListSize() {
 	m.historyList.SetDelegate(newHistoryDelegate(listWidth))
 }
 
+// selectedHistoryCount returns the number of selected history entries
+func (m *model) selectedHistoryCount() int {
+	count := 0
+	for _, v := range m.historySelectedIDs {
+		if v {
+			count++
+		}
+	}
+	return count
+}
+
 // fetchHistory creates a command to load history index
 func (m *model) fetchHistory() tea.Cmd {
 	return func() tea.Msg {
@@ -133,18 +157,104 @@ func (m *model) fetchHistory() tea.Cmd {
 
 // updateHistoryList handles key events on the history list screen
 func (m model) updateHistoryList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle delete confirmation modal first
+	if m.showHistoryDeleteConfirm {
+		switch msg.String() {
+		case "y", "Y":
+			return m.executeHistoryDelete()
+		case "n", "N", "esc":
+			m.showHistoryDeleteConfirm = false
+			return m, nil
+		case "enter":
+			if m.historyDeleteConfirmIndex == 0 {
+				return m.executeHistoryDelete()
+			}
+			m.showHistoryDeleteConfirm = false
+			return m, nil
+		case "tab", "left", "right", "h", "l":
+			if m.historyDeleteConfirmIndex == 0 {
+				m.historyDeleteConfirmIndex = 1
+			} else {
+				m.historyDeleteConfirmIndex = 0
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
-	case "ctrl+q", "esc":
-		// If filtering, let the list handle it; otherwise go back
+	case "ctrl+q":
+		m.screen = screenHome
+		m.historySelectMode = false
+		m.historySelectedIDs = nil
+		return m, nil
+	case "esc":
+		// If filtering, let the list handle it
 		if m.historyList.FilterState() == list.Filtering {
 			break
 		}
+		// If select mode, exit select mode instead of going back
+		if m.historySelectMode {
+			m.historySelectMode = false
+			m.historySelectedIDs = nil
+			return m, nil
+		}
 		m.screen = screenHome
 		return m, nil
+	case "v":
+		if m.historyList.FilterState() == list.Filtering {
+			break
+		}
+		if m.historySelectMode {
+			// Exit select mode
+			m.historySelectMode = false
+			m.historySelectedIDs = nil
+		} else {
+			// Enter select mode
+			m.historySelectMode = true
+			m.historySelectedIDs = make(map[string]bool)
+		}
+		return m, nil
+	case " ":
+		if m.historySelectMode {
+			selected := m.historyList.SelectedItem()
+			if selected != nil {
+				if hi, ok := selected.(historyListItem); ok {
+					id := hi.entry.ID
+					if m.historySelectedIDs[id] {
+						delete(m.historySelectedIDs, id)
+					} else {
+						m.historySelectedIDs[id] = true
+					}
+				}
+			}
+			return m, nil
+		}
+	case "d":
+		if m.historySelectMode && m.selectedHistoryCount() > 0 {
+			m.showHistoryDeleteConfirm = true
+			m.historyDeleteConfirmIndex = 1 // Cancel focused by default
+			return m, nil
+		}
 	case "enter":
 		// If filtering, let the list handle it
 		if m.historyList.FilterState() == list.Filtering {
 			break
+		}
+		// In select mode, toggle like space
+		if m.historySelectMode {
+			selected := m.historyList.SelectedItem()
+			if selected != nil {
+				if hi, ok := selected.(historyListItem); ok {
+					id := hi.entry.ID
+					if m.historySelectedIDs[id] {
+						delete(m.historySelectedIDs, id)
+					} else {
+						m.historySelectedIDs[id] = true
+					}
+				}
+			}
+			return m, nil
 		}
 		// Load selected history detail
 		selected := m.historyList.SelectedItem()
@@ -163,6 +273,41 @@ func (m model) updateHistoryList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// executeHistoryDelete performs the actual deletion of selected history entries
+func (m model) executeHistoryDelete() (tea.Model, tea.Cmd) {
+	err := DeleteHistoryEntries(m.historySelectedIDs)
+	if err != nil {
+		m.showHistoryDeleteConfirm = false
+		m.showErrorModal = true
+		m.errorModalMsg = "Failed to delete entries: " + err.Error()
+		return m, nil
+	}
+
+	// Remove deleted entries from in-memory list
+	filtered := make([]HistoryIndexEntry, 0, len(m.historyEntries))
+	for _, entry := range m.historyEntries {
+		if !m.historySelectedIDs[entry.ID] {
+			filtered = append(filtered, entry)
+		}
+	}
+	m.historyEntries = filtered
+
+	// Rebuild list items
+	items := make([]list.Item, len(filtered))
+	for i, entry := range filtered {
+		items[i] = historyListItem{entry: entry}
+	}
+	m.historyList.SetItems(items)
+	m.historyList.Title = fmt.Sprintf("Releases History (%d)", len(filtered))
+
+	// Exit select mode and close modal
+	m.historySelectMode = false
+	m.historySelectedIDs = nil
+	m.showHistoryDeleteConfirm = false
+
+	return m, nil
+}
+
 // loadHistoryDetail creates a command to load history detail
 func (m *model) loadHistoryDetail(id string) tea.Cmd {
 	return func() tea.Msg {
@@ -177,6 +322,18 @@ func (m model) viewHistoryList() string {
 		return ""
 	}
 
+	// Update delegate with current select mode state
+	listWidth := m.width - 6
+	if listWidth < 40 {
+		listWidth = 40
+	}
+	d := historyDelegate{
+		width:       listWidth,
+		selectMode:  m.historySelectMode,
+		selectedIDs: m.historySelectedIDs,
+	}
+	m.historyList.SetDelegate(d)
+
 	// Render title
 	title := m.historyList.Styles.Title.Render(m.historyList.Title)
 
@@ -186,8 +343,13 @@ func (m model) viewHistoryList() string {
 	dateW := 20
 	mrsW := 10
 
+	headerPrefix := "  "
+	if m.historySelectMode {
+		headerPrefix = "      "
+	}
+
 	header := "  " + historyHeaderStyle.Render(
-		"  "+padColumn("TAG", tagW)+" "+padColumn("ENV", envW)+" "+padColumn("DATE", dateW)+" "+padColumn("MRS", mrsW),
+		headerPrefix+padColumn("TAG", tagW)+" "+padColumn("ENV", envW)+" "+padColumn("DATE", dateW)+" "+padColumn("MRS", mrsW),
 	)
 
 	listContent := m.historyList.View()
@@ -199,8 +361,46 @@ func (m model) viewHistoryList() string {
 		Render(title + "\n\n" + header + "\n" + listContent)
 
 	// Help footer
-	helpText := "j/k: nav • enter: view • /: search • C+q: back • C+c: quit"
+	var helpText string
+	if m.historySelectMode {
+		helpText = "v: exit select • space: toggle • d: delete • esc: cancel"
+	} else {
+		helpText = "j/k: nav • enter: view • /: search • v: select • C+q: back • C+c: quit"
+	}
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, content, help)
+}
+
+// overlayHistoryDeleteConfirm renders the delete history confirmation modal
+func (m model) overlayHistoryDeleteConfirm(background string) string {
+	var sb strings.Builder
+
+	count := m.selectedHistoryCount()
+
+	title := errorTitleStyle.Render("Delete Releases?")
+	sb.WriteString(title)
+	sb.WriteString("\n\n")
+	sb.WriteString(fmt.Sprintf("Delete %d selected release(s)?\n", count))
+	sb.WriteString("This cannot be undone.\n\n")
+
+	var deleteBtn, cancelBtn string
+	if m.historyDeleteConfirmIndex == 0 {
+		deleteBtn = buttonDangerStyle.Render("Delete")
+		cancelBtn = buttonStyle.Render("Cancel")
+	} else {
+		deleteBtn = buttonStyle.Render("Delete")
+		cancelBtn = buttonActiveStyle.Render("Cancel")
+	}
+	sb.WriteString(fmt.Sprintf("       %s       %s", deleteBtn, cancelBtn))
+
+	config := ModalConfig{
+		Width:    ModalWidth{Value: 50, Percent: false},
+		MinWidth: 40,
+		MaxWidth: 60,
+		Style:    errorBoxStyle,
+	}
+
+	modal := renderModal(sb.String(), config, m.width)
+	return placeOverlayCenter(modal, background, m.width, m.height)
 }

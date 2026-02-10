@@ -1350,6 +1350,14 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		m.releaseButtonIndex = 2
 	} else if nextStep == ReleaseStepComplete {
 		// Release complete (including root merge if enabled)
+		// Save to history immediately so it persists even if user exits with Ctrl+C
+		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
+		if m.releaseCurrentScreen != "" {
+			lines := strings.Split(m.releaseCurrentScreen, "\n")
+			terminalOutput = append(terminalOutput, lines...)
+		}
+		SaveReleaseHistory(state, "completed", terminalOutput)
+
 		// Clear release state so Ctrl+C goes to MRs list
 		ClearReleaseState()
 
@@ -1678,16 +1686,6 @@ func (m model) completeRelease() (tea.Model, tea.Cmd) {
 	// Stop pipeline observer
 	m.stopPipelineObserver()
 	m.pipelineStatus = nil
-
-	// Save to history before clearing state
-	if m.releaseState != nil {
-		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
-		if m.releaseCurrentScreen != "" {
-			lines := strings.Split(m.releaseCurrentScreen, "\n")
-			terminalOutput = append(terminalOutput, lines...)
-		}
-		SaveReleaseHistory(m.releaseState, "completed", terminalOutput)
-	}
 
 	// Switch to root branch as the final operation
 	if m.releaseState != nil {

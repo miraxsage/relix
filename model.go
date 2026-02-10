@@ -110,17 +110,21 @@ type model struct {
 	pipelineFailNotified bool // Track if we already sent a failure notification
 
 	// Release history
-	historyList           list.Model
-	historyEntries        []HistoryIndexEntry
-	historySelected       *ReleaseHistoryEntry
-	historyDetailTab      int // 0=MRs, 1=Meta, 2=Logs
-	historyLogsViewport   viewport.Model
-	historyMRViewport     viewport.Model
-	historyMRIndex        int                              // Selected MR in detail MRs tab
-	historyMRDetailsMap   map[int]*MergeRequestDetails     // All fetched MR details by index
-	loadingHistory        bool
-	loadingHistoryMRs     bool                             // Loading state for all MRs fetch
-	historyMRsLoadError   bool                             // True if MRs failed to load
+	historyList                list.Model
+	historyEntries             []HistoryIndexEntry
+	historySelected            *ReleaseHistoryEntry
+	historyDetailTab           int // 0=MRs, 1=Meta, 2=Logs
+	historyLogsViewport        viewport.Model
+	historyMRViewport          viewport.Model
+	historyMRIndex             int                              // Selected MR in detail MRs tab
+	historyMRDetailsMap        map[int]*MergeRequestDetails     // All fetched MR details by index
+	loadingHistory             bool
+	loadingHistoryMRs          bool                             // Loading state for all MRs fetch
+	historyMRsLoadError        bool                             // True if MRs failed to load
+	historySelectMode          bool                             // Whether select mode is active
+	historySelectedIDs         map[string]bool                  // Selected history entry IDs for deletion
+	showHistoryDeleteConfirm   bool                             // Show delete confirmation modal
+	historyDeleteConfirmIndex  int                              // 0=Delete, 1=Cancel
 
 	// Open options modal (for "open" actions)
 	showOpenOptionsModal bool
@@ -188,6 +192,7 @@ func (m *model) closeAllModals() {
 	m.showSettings = false
 	m.settingsError = ""
 	m.settingsExcludePatterns.Blur()
+	m.showHistoryDeleteConfirm = false
 	m.closeOpenOptionsModal()
 }
 
@@ -665,6 +670,11 @@ func (m model) View() string {
 	// Overlay error modal if open
 	if m.showErrorModal {
 		view = m.overlayErrorModal(view)
+	}
+
+	// Overlay history delete confirmation if open
+	if m.showHistoryDeleteConfirm {
+		view = m.overlayHistoryDeleteConfirm(view)
 	}
 
 	// Overlay open options modal if open
