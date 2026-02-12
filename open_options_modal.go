@@ -48,20 +48,30 @@ func buildMROpenOptions(mr *MergeRequestDetails) []OpenOption {
 }
 
 // buildHistoryOpenOptions builds options for history detail context
-func buildHistoryOpenOptions(entry *ReleaseHistoryEntry, mrIndex int) []OpenOption {
+// tab: 0=MRs, 1=Meta, 2=Logs
+func buildHistoryOpenOptions(entry *ReleaseHistoryEntry, mrIndex int, tab int) []OpenOption {
 	options := []OpenOption{}
 
-	if entry.CreatedMRURL != "" {
-		options = append(options, OpenOption{Label: "GitLab MR", URL: entry.CreatedMRURL})
-	}
+	if tab == 0 {
+		// MRs tab: show selected individual MR and Jira task
+		if mrIndex >= 0 && mrIndex < len(entry.MRURLs) && entry.MRURLs[mrIndex] != "" {
+			options = append(options, OpenOption{Label: "GitLab MR", URL: entry.MRURLs[mrIndex]})
+		}
 
-	if mrIndex >= 0 && mrIndex < len(entry.MRBranches) {
-		branchName := entry.MRBranches[mrIndex]
-		if taskNum := extractJiraTaskNumber(branchName); taskNum != "" {
-			options = append(options, OpenOption{
-				Label: fmt.Sprintf("Jira Task (RUSSPASS-%s)", taskNum),
-				URL:   buildJiraURL(taskNum),
-			})
+		// Add Jira task URL (if available)
+		if mrIndex >= 0 && mrIndex < len(entry.MRBranches) {
+			branchName := entry.MRBranches[mrIndex]
+			if taskNum := extractJiraTaskNumber(branchName); taskNum != "" {
+				options = append(options, OpenOption{
+					Label: fmt.Sprintf("Jira Task (RUSSPASS-%s)", taskNum),
+					URL:   buildJiraURL(taskNum),
+				})
+			}
+		}
+	} else {
+		// Meta/Logs tabs: show environment release MR
+		if entry.CreatedMRURL != "" {
+			options = append(options, OpenOption{Label: "GitLab MR", URL: entry.CreatedMRURL})
 		}
 	}
 

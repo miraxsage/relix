@@ -156,6 +156,7 @@ const (
 	ReleaseStepPushAndCreateMR             // Step 7: create GitLab MR (branches already pushed)
 	ReleaseStepWaitForRootPush             // Step 8: waiting for user to press "Push root branches" button
 	ReleaseStepPushRootBranches            // Step 9: tag/push source branch, merge to root, push root, merge to develop, push develop
+	ReleaseStepSwitchToRoot                // Step 10: switch back to root branch
 	ReleaseStepComplete                    // Done
 )
 

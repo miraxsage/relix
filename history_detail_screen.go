@@ -24,7 +24,7 @@ func (m *model) initHistoryDetailScreen() {
 	// Initialize logs viewport
 	if m.historyDetailTab == 2 { // Logs tab
 		logsWidth := m.width - 8
-		logsHeight := contentHeight - 5 // tabs + padding
+		logsHeight := contentHeight - 7 // tabs + padding
 		if logsHeight < 1 {
 			logsHeight = 1
 		}
@@ -36,7 +36,7 @@ func (m *model) initHistoryDetailScreen() {
 	if m.historyDetailTab == 0 {
 		sidebarW := sidebarWidth(m.width)
 		contentWidth := m.width - sidebarW - 4
-		vpHeight := contentHeight - 5
+		vpHeight := contentHeight - 7
 		if vpHeight < 1 {
 			vpHeight = 1
 		}
@@ -82,9 +82,9 @@ func (m model) updateHistoryDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		(&m).initHistoryDetailScreen()
 		return m, nil
 	case "o":
-		// Show options modal (if on MRs tab)
-		if m.historyDetailTab == 0 && m.historySelected != nil {
-			return m.handleOpenAction(buildHistoryOpenOptions(m.historySelected, m.historyMRIndex))
+		// Show options modal based on current tab
+		if m.historySelected != nil {
+			return m.handleOpenAction(buildHistoryOpenOptions(m.historySelected, m.historyMRIndex, m.historyDetailTab))
 		}
 		return m, nil
 	case "r":
@@ -219,14 +219,15 @@ func (m model) viewHistoryDetail() string {
 	tabs := tabsBuilder.String()
 
 	// Render content based on tab
+	// Account for: title border (2) + tabs line (1) + spacing (2) + main border (2) = 7 total
 	var content string
 	switch m.historyDetailTab {
 	case 0:
-		content = m.viewHistoryMRsTab(contentHeight - 6)
+		content = m.viewHistoryMRsTab(contentHeight - 8)
 	case 1:
-		content = m.viewHistoryMetaTab(contentHeight - 4)
+		content = m.viewHistoryMetaTab(contentHeight - 6)
 	case 2:
-		content = m.viewHistoryLogsTab(contentHeight - 4)
+		content = m.viewHistoryLogsTab(contentHeight - 6)
 	}
 
 	// Build title
@@ -260,17 +261,24 @@ func (m model) viewHistoryDetail() string {
 		statusStyle.Render(entry.Status) + " at " +
 		entry.DateTime.Format("02.01.2006 15:04")
 
-	// Compose
+	// Wrap title with border (matching contentStyle border color)
+	titleWithBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		Render(titleText)
+
+	// Compose (increase height by 2 to fill available space)
 	main := contentStyle.
 		Width(m.width - 2).
 		Height(contentHeight).
-		Render(titleText + "\n\n" + tabs + "\n\n" + content)
+		Render(titleWithBorder + "\n\n" + tabs + "\n\n" + content)
 
-	// Help footer
+	// Help footer with empty line after
 	helpText := "tab: next tab • j/k: nav • d/pgup: scroll • o: open • r: reload • C+q: back"
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
-	return lipgloss.JoinVertical(lipgloss.Left, main, help)
+	return lipgloss.JoinVertical(lipgloss.Left, main, help, "")
 }
 
 // viewHistoryMRsTab renders the MRs tab with sidebar list
@@ -403,6 +411,8 @@ func (m *model) updateHistoryMRViewport() {
 
 	content := m.renderHistoryMRMarkdown()
 	m.historyMRViewport.SetContent(content)
+	// Reset viewport position to top when switching between MRs
+	m.historyMRViewport.GotoTop()
 }
 
 // renderHistoryMRMarkdown renders the markdown content for the selected history MR

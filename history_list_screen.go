@@ -106,7 +106,8 @@ func (m *model) initHistoryListScreen() {
 		listWidth = 40
 	}
 
-	l := list.New([]list.Item{}, newHistoryDelegate(listWidth), listWidth, m.height-8)
+	// Adjust height for title border (2) + help empty line (1) = 3 extra lines
+	l := list.New([]list.Item{}, newHistoryDelegate(listWidth), listWidth, m.height-11)
 	l.Title = "Releases History"
 	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("231")).PaddingLeft(1).PaddingRight(1)
 	l.SetShowHelp(false)
@@ -132,7 +133,8 @@ func (m *model) updateHistoryListSize() {
 	if listWidth < 40 {
 		listWidth = 40
 	}
-	m.historyList.SetSize(listWidth, m.height-8)
+	// Adjust height for title border (2) + help empty line (1) = 3 extra lines
+	m.historyList.SetSize(listWidth, m.height-11)
 	m.historyList.SetDelegate(newHistoryDelegate(listWidth))
 }
 
@@ -334,8 +336,24 @@ func (m model) viewHistoryList() string {
 	}
 	m.historyList.SetDelegate(d)
 
-	// Render title
-	title := m.historyList.Styles.Title.Render(m.historyList.Title)
+	// Render title with border (matching contentStyle border color)
+	// Split title to render count without background
+	fullTitle := m.historyList.Title
+	mainTitle := "Releases History"
+	count := ""
+
+	// Extract count if present (format: "Releases History (N)")
+	if idx := strings.Index(fullTitle, " ("); idx >= 0 {
+		mainTitle = fullTitle[:idx]
+		count = " " + fullTitle[idx+1:] // " (N)"
+	}
+
+	titleText := m.historyList.Styles.Title.Render(mainTitle) + count
+	title := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		Render(titleText)
 
 	// Render header with column labels
 	tagW := 15
@@ -360,7 +378,7 @@ func (m model) viewHistoryList() string {
 		Height(m.height - 4).
 		Render(title + "\n\n" + header + "\n" + listContent)
 
-	// Help footer
+	// Help footer with empty line after
 	var helpText string
 	if m.historySelectMode {
 		helpText = "v: exit select • space: toggle • d: delete • esc: cancel"
@@ -369,7 +387,7 @@ func (m model) viewHistoryList() string {
 	}
 	help := helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText)
 
-	return lipgloss.JoinVertical(lipgloss.Left, content, help)
+	return lipgloss.JoinVertical(lipgloss.Left, content, help, "")
 }
 
 // overlayHistoryDeleteConfirm renders the delete history confirmation modal

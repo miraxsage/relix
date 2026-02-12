@@ -82,6 +82,7 @@ func calculateReleaseTotalSteps(state *ReleaseState) int {
 	} else {
 		total += 2 // tag, push with tags
 	}
+	total += 1 // SwitchToRoot
 	return total
 }
 
@@ -695,6 +696,12 @@ func (m model) renderReleaseStatus(width int) string {
 			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
 			releasePercentStyle.Render(progressText))
 
+	case ReleaseStepSwitchToRoot:
+		status = fmt.Sprintf("%s %s %s\nSwitching back to root branch...",
+			m.spinner.View(),
+			getReleaseEnvStyle(state.Environment.Name).Render("RELEASING"),
+			releasePercentStyle.Render(progressText))
+
 	case ReleaseStepComplete:
 		status = fmt.Sprintf("Release is %s\nPress %s to open MR link, or press\n%s to exit this release screen",
 			releaseSuccessGreenStyle.Render(" SUCCESSFULLY COMPLETED "),
@@ -1156,6 +1163,10 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 				output = output1 + output2
 			}
 
+		case ReleaseStepSwitchToRoot:
+			// Switch back to root branch as final step
+			output, err = executor.RunCommand("git checkout root")
+
 		default:
 			return releaseStepCompleteMsg{step: step, err: nil}
 		}
@@ -1319,7 +1330,13 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 
 	case ReleaseStepPushRootBranches:
 		// substeps already incremented via releaseSubStepDoneMsg
-		// Root push completed, go to complete
+		// Root push completed, now switch back to root branch
+		nextStep = ReleaseStepSwitchToRoot
+		state.CurrentStep = nextStep
+
+	case ReleaseStepSwitchToRoot:
+		state.CompletedSubSteps++
+		// Switch to root completed, save to history and mark as complete
 		nextStep = ReleaseStepComplete
 		state.CurrentStep = nextStep
 
@@ -1349,8 +1366,9 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 		// Focus on "Push root branches" button (index 2: Abort=0, Open=1, PushRoot=2)
 		m.releaseButtonIndex = 2
 	} else if nextStep == ReleaseStepComplete {
-		// Release complete (including root merge if enabled)
+		// Release complete
 		// Save to history immediately so it persists even if user exits with Ctrl+C
+		// (History saved here after SwitchToRoot completes)
 		terminalOutput := append([]string{}, m.releaseOutputBuffer...)
 		if m.releaseCurrentScreen != "" {
 			lines := strings.Split(m.releaseCurrentScreen, "\n")
@@ -1687,13 +1705,7 @@ func (m model) completeRelease() (tea.Model, tea.Cmd) {
 	m.stopPipelineObserver()
 	m.pipelineStatus = nil
 
-	// Switch to root branch as the final operation
-	if m.releaseState != nil {
-		workDir := m.releaseState.WorkDir
-		exec := NewGitExecutor(workDir, nil)
-		exec.RunCommand("git checkout root")
-		exec.Close()
-	}
+	// No need to checkout root here - it's already done as part of ReleaseStepSwitchToRoot
 
 	ClearReleaseState()
 	m.releaseState = nil
