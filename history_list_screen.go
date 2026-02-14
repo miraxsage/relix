@@ -75,8 +75,8 @@ func (d historyDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	}
 
 	// Build line
-	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
-	dateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	textStyle := lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	dateStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
 
 	line := checkbox + statusDot + " " + textStyle.Render(tag) + " " + styledEnv + " " + dateStyle.Render(dateStr) + " " + textStyle.Render(mrs)
 
@@ -84,7 +84,7 @@ func (d historyDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	if isSelected {
 		selectedStyle := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("105")).
+			BorderForeground(currentTheme.Accent).
 			PaddingLeft(1)
 		line = selectedStyle.Render(line)
 	} else {
@@ -109,7 +109,7 @@ func (m *model) initHistoryListScreen() {
 	// Adjust height for title border (2) + help empty line (1) = 3 extra lines
 	l := list.New([]list.Item{}, newHistoryDelegate(listWidth), listWidth, m.height-11)
 	l.Title = "Releases History"
-	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("231")).PaddingLeft(1).PaddingRight(1)
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(currentTheme.Accent).Foreground(currentTheme.AccentForeground).PaddingLeft(1).PaddingRight(1)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
 	l.SetShowStatusBar(false)
@@ -119,7 +119,7 @@ func (m *model) initHistoryListScreen() {
 	l.KeyMap.Quit.SetEnabled(false)
 	l.KeyMap.ForceQuit.SetEnabled(false)
 
-	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("189"))
+	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(currentTheme.Foreground)
 
 	m.historyList = l
 }
@@ -351,7 +351,7 @@ func (m model) viewHistoryList() string {
 	titleText := m.historyList.Styles.Title.Render(mainTitle) + count
 	title := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Render(titleText)
 

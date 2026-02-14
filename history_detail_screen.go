@@ -13,6 +13,58 @@ import (
 
 var historyDetailTabs = []string{"MRs", "Meta", "Logs"}
 
+// remapTerminalColors replaces ANSI escape sequences from the theme that was
+// active at save time with sequences from the current theme. Plain-text lines
+// (no color codes) are wrapped with the current foreground color. Git-native
+// SGR codes (e.g. \033[31m) are untouched because lipgloss uses 256-color
+// format (\033[38;5;Nm) which never collides.
+func remapTerminalColors(lines []string, savedMap *ThemeANSIMap) []string {
+	if savedMap == nil {
+		savedMap = defaultThemeANSIMap()
+	}
+	cur := buildThemeANSIMap(currentTheme)
+
+	// Build replacement pairs: old → new, skip identity pairs
+	type pair struct{ old, new string }
+	pairs := []pair{
+		{savedMap.Warning, cur.Warning},
+		{savedMap.Success, cur.Success},
+		{savedMap.Error, cur.Error},
+		{savedMap.Accent, cur.Accent},
+		{savedMap.Foreground, cur.Foreground},
+	}
+
+	var replacerArgs []string
+	for _, p := range pairs {
+		if p.old == "" || p.new == "" || p.old == p.new {
+			continue
+		}
+		replacerArgs = append(replacerArgs, p.old, p.new)
+	}
+
+	var r *strings.Replacer
+	if len(replacerArgs) > 0 {
+		r = strings.NewReplacer(replacerArgs...)
+	}
+
+	fgPrefix := cur.Foreground
+
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		if r != nil {
+			line = r.Replace(line)
+		}
+		// Prepend foreground color to all non-empty lines so plain text
+		// renders in the theme color. Inline ANSI codes (git diff colors,
+		// command headers) override it for their segments.
+		if line != "" && fgPrefix != "" {
+			line = fgPrefix + line
+		}
+		out[i] = line
+	}
+	return out
+}
+
 // initHistoryDetailScreen initializes the history detail screen viewports
 func (m *model) initHistoryDetailScreen() {
 	if m.width == 0 || m.height == 0 || m.historySelected == nil {
@@ -29,7 +81,8 @@ func (m *model) initHistoryDetailScreen() {
 			logsHeight = 1
 		}
 		m.historyLogsViewport = viewport.New(logsWidth, logsHeight)
-		m.historyLogsViewport.SetContent(strings.Join(m.historySelected.TerminalOutput, "\n"))
+		remapped := remapTerminalColors(m.historySelected.TerminalOutput, m.historySelected.ThemeANSIMap)
+		m.historyLogsViewport.SetContent(strings.Join(remapped, "\n"))
 	}
 
 	// Initialize MRs viewport for MRs tab
@@ -250,21 +303,22 @@ func (m model) viewHistoryDetail() string {
 	// Prefix style (matching history list title)
 	prefixStyle := lipgloss.NewStyle().
 		Bold(true).
-		Background(lipgloss.Color("62")).
-		Foreground(lipgloss.Color("231")).
+		Background(currentTheme.Accent).
+		Foreground(currentTheme.AccentForeground).
 		PaddingLeft(1).
 		PaddingRight(1)
 
+	fgStyle := lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	titleText := prefixStyle.Render("Release") + " " +
-		entry.Version + vNumber + " to " +
-		envStyle.Render(entry.Environment) + " was " +
-		statusStyle.Render(entry.Status) + " at " +
-		entry.DateTime.Format("02.01.2006 15:04")
+		fgStyle.Render(entry.Version+vNumber+" to ") +
+		envStyle.Render(entry.Environment) + fgStyle.Render(" was ") +
+		statusStyle.Render(entry.Status) + fgStyle.Render(" at "+
+		entry.DateTime.Format("02.01.2006 15:04"))
 
 	// Wrap title with border (matching contentStyle border color)
 	titleWithBorder := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Render(titleText)
 
@@ -289,7 +343,7 @@ func (m model) viewHistoryMRsTab(height int) string {
 
 	branches := m.historySelected.MRBranches
 	if len(branches) == 0 {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("60")).Render("No MRs in this release")
+		return lipgloss.NewStyle().Foreground(currentTheme.Notion).Render("No MRs in this release")
 	}
 
 	sidebarW := sidebarWidth(m.width)
@@ -302,12 +356,12 @@ func (m model) viewHistoryMRsTab(height int) string {
 	sidebarBuilder.WriteString("\n\n")
 
 	// Style for MR branches (matching release screen)
-	mrBranchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
+	mrBranchStyle := lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	selectedMRBranchStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("105")).
+		Foreground(currentTheme.Accent).
 		Border(lipgloss.NormalBorder(), false, false, false, true).
-		BorderForeground(lipgloss.Color("105")).
+		BorderForeground(currentTheme.Accent).
 		PaddingLeft(1)
 
 	for i, branch := range branches {
@@ -397,7 +451,7 @@ func (m model) viewHistoryLogsTab(height int) string {
 	}
 
 	if len(m.historySelected.TerminalOutput) == 0 {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("60")).Render("No logs available")
+		return lipgloss.NewStyle().Foreground(currentTheme.Notion).Render("No logs available")
 	}
 
 	return m.historyLogsViewport.View()
@@ -419,12 +473,12 @@ func (m *model) updateHistoryMRViewport() {
 func (m model) renderHistoryMRMarkdown() string {
 	// Show loading state
 	if m.loadingHistoryMRs {
-		return m.spinner.View() + " " + lipgloss.NewStyle().Foreground(lipgloss.Color("189")).Render("Loading MR details...")
+		return m.spinner.View() + " " + lipgloss.NewStyle().Foreground(currentTheme.Foreground).Render("Loading MR details...")
 	}
 
 	// Show error state
 	if m.historyMRsLoadError {
-		return lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("189")).Render("Failed to load MR details.\nCheck your GitLab credentials and project access.")
+		return lipgloss.NewStyle().PaddingLeft(1).Foreground(currentTheme.Foreground).Render("Failed to load MR details.\nCheck your GitLab credentials and project access.")
 	}
 
 	// Get details from the map
@@ -433,8 +487,8 @@ func (m model) renderHistoryMRMarkdown() string {
 	// Show placeholder if MRs haven't been loaded yet
 	if details == nil && len(m.historyMRDetailsMap) == 0 {
 		var message strings.Builder
-		tipStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
-		linkStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Underline(true)
+		tipStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
+		linkStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning).Underline(true)
 
 		// Show individual MR link if available
 		if m.historySelected != nil && m.historyMRIndex >= 0 && m.historyMRIndex < len(m.historySelected.MRURLs) {
@@ -452,18 +506,18 @@ func (m model) renderHistoryMRMarkdown() string {
 	}
 
 	if details == nil {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("60")).Render("No MR details available for this branch")
+		return lipgloss.NewStyle().Foreground(currentTheme.Notion).Render("No MR details available for this branch")
 	}
 
 	style := styles.DarkStyleConfig
-	style.Document.StylePrimitive.Color = stringPtr("189")
-	style.Strong.Color = stringPtr("220")
+	style.Document.StylePrimitive.Color = stringPtr(string(currentTheme.Foreground))
+	style.Strong.Color = stringPtr(string(currentTheme.Warning))
 	style.H1.Prefix = " "
-	style.H1.BackgroundColor = stringPtr("62")
+	style.H1.BackgroundColor = stringPtr(string(currentTheme.Accent))
 	style.H1.Color = stringPtr("231")
 	style.H2.Prefix = ""
 	style.H3.Prefix = ""
-	style.H3.Color = stringPtr("105")
+	style.H3.Color = stringPtr(string(currentTheme.Accent))
 
 	// Clean up author name (replace multiple spaces with single space)
 	authorName := strings.Join(strings.Fields(details.Author.Name), " ")

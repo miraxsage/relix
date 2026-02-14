@@ -30,28 +30,28 @@ func initAuthInputs() []textinput.Model {
 	// GitLab URL input
 	inputs[0] = textinput.New()
 	inputs[0].Placeholder = "https://gitlab.com"
-	inputs[0].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	inputs[0].PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	inputs[0].Focus()
 	inputs[0].CharLimit = 256
 	inputs[0].Width = 40
-	inputs[0].Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	inputs[0].Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 
 	// Email input
 	inputs[1] = textinput.New()
 	inputs[1].Placeholder = "user@example.com"
-	inputs[1].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	inputs[1].PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	inputs[1].CharLimit = 256
 	inputs[1].Width = 40
-	inputs[1].Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	inputs[1].Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 
 	// Token input
 	inputs[2] = textinput.New()
 	inputs[2].Placeholder = "glpat-... (requires api scope)"
-	inputs[2].PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	inputs[2].PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	inputs[2].CharLimit = 256
 	inputs[2].Width = 40
 	inputs[2].EchoMode = textinput.EchoPassword
-	inputs[2].Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	inputs[2].Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 
 	return inputs
 }

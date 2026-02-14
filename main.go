@@ -83,6 +83,9 @@ func main() {
 		projectDirectory = absPath
 	}
 
+	// Load theme from config before creating the model (rebuilds all styles)
+	loadThemeFromConfig()
+
 	p := tea.NewProgram(NewModel(), tea.WithAltScreen())
 
 	// Send program reference to model for async message sending

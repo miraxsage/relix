@@ -264,7 +264,7 @@ func (m *model) initListScreen() {
 	}
 	l := list.New([]list.Item{}, newMRDelegate(m.selectedMRs), 0, 0)
 	l.Title = "Open MRs"
-	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("231")).PaddingLeft(1).PaddingRight(1)
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Background(currentTheme.Accent).Foreground(currentTheme.AccentForeground).PaddingLeft(1).PaddingRight(1)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
 	l.SetShowStatusBar(false)
@@ -274,7 +274,7 @@ func (m *model) initListScreen() {
 	l.KeyMap.ForceQuit.SetEnabled(false)
 
 	// Style "no items" text as white
-	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("189"))
+	l.Styles.NoItems = lipgloss.NewStyle().PaddingLeft(2).Foreground(currentTheme.Foreground)
 
 	m.list = l
 	m.ready = false
@@ -418,18 +418,18 @@ func (m model) renderMarkdown() string {
 
 	selected := m.list.SelectedItem()
 	if selected == nil {
-		return lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("189")).Render("No merge requests found.\nPress 'r' to refresh.")
+		return lipgloss.NewStyle().PaddingLeft(1).Foreground(currentTheme.Foreground).Render("No merge requests found.\nPress 'r' to refresh.")
 	}
 
 	style := styles.DarkStyleConfig
-	style.Document.StylePrimitive.Color = stringPtr("189")
-	style.Strong.Color = stringPtr("220")
+	style.Document.StylePrimitive.Color = stringPtr(string(currentTheme.Foreground))
+	style.Strong.Color = stringPtr(string(currentTheme.Warning))
 	style.H1.Prefix = " "
-	style.H1.BackgroundColor = stringPtr("62")
+	style.H1.BackgroundColor = stringPtr(string(currentTheme.Accent))
 	style.H1.Color = stringPtr("231")
 	style.H2.Prefix = ""
 	style.H3.Prefix = ""
-	style.H3.Color = stringPtr("105")
+	style.H3.Color = stringPtr(string(currentTheme.Accent))
 
 	mr, ok := selected.(mrListItem)
 	if !ok {

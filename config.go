@@ -53,9 +53,21 @@ func LoadConfig() (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return default config with default excluded file patterns
+			// Return default config with default excluded file patterns and default theme
 			return &AppConfig{
 				ExcludePatterns: ".gitlab-ci.yml\nsprite.gen.ts",
+				SelectedTheme:   "indigo",
+				Themes: []ThemeConfig{
+					{
+						Name:       "indigo",
+						Accent:     "#5F5FDF",
+						Foreground: "#D7D7FF",
+						Notion:     "#5F5F8A",
+						Success:    "#00D588",
+						Warning:    "#FFD600",
+						Error:      "#FF84A8",
+					},
+				},
 			}, nil
 		}
 		return nil, err

@@ -190,7 +190,7 @@ func (m *model) appendReleaseOutput(line string) {
 
 // appendRecoveryMetadata adds recovery metadata to the terminal output at release start
 func (m *model) appendRecoveryMetadata(workDir string, state *ReleaseState) {
-	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	headerStyle := lipgloss.NewStyle().Foreground(currentTheme.Success)
 	m.releaseOutputBuffer = append(m.releaseOutputBuffer, headerStyle.Render("Release recover metadata:"))
 
 	// Get commit IDs for various branches
@@ -1215,7 +1215,7 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 
 	if msg.err != nil {
 		// Handle error - display in terminal with pale red color (no background)
-		terminalErrorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+		terminalErrorStyle := lipgloss.NewStyle().Foreground(currentTheme.Error)
 		m.appendReleaseOutput("")
 		m.appendReleaseOutput(terminalErrorStyle.Render("ERROR: " + msg.err.Error()))
 
@@ -1649,8 +1649,8 @@ func (m model) renderRootPushHint() string {
 	state := m.releaseState
 
 	// Styles for the hint text
-	branchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	tagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	branchStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning)
+	tagStyle := lipgloss.NewStyle().Foreground(currentTheme.Accent)
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
 	// Get tag name (already calculated and stored in state)
@@ -2075,9 +2075,9 @@ func (m *model) renderPipelineStatus() string {
 
 	status := m.pipelineStatus
 
-	loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	failedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	loadingStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning)
+	successStyle := lipgloss.NewStyle().Foreground(currentTheme.Success)
+	failedStyle := lipgloss.NewStyle().Foreground(currentTheme.Error)
 
 	var line string
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -10,10 +11,11 @@ import (
 )
 
 // Settings tabs
-var settingsTabs = []string{"Release"}
+var settingsTabs = []string{"Release", "Theme"}
 
-// Number of focusable elements in Release tab
+// Number of focusable elements per tab
 const settingsReleaseFieldCount = 2 // textarea, save button
+const settingsThemeFieldCount = 2   // theme list, save button
 
 // Invalid characters for file patterns (excluding glob special chars)
 var (
@@ -26,32 +28,70 @@ var (
 func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+q":
-		// Close without saving
+		// Close without saving; revert theme preview if on Theme tab
+		if m.settingsTab == 1 {
+			loadThemeFromConfig()
+		}
 		m.showSettings = false
 		m.settingsExcludePatterns.Blur()
 		m.settingsError = ""
 		m.settingsFocusIndex = 0
 		return m, nil
 
+	case "H":
+		// Switch to previous tab
+		if m.settingsTab > 0 {
+			if m.settingsTab == 1 {
+				loadThemeFromConfig()
+			}
+			m.settingsTab--
+			m.settingsFocusIndex = 0
+			return m, m.settingsExcludePatterns.Focus()
+		}
+		return m, nil
+
+	case "L":
+		// Switch to next tab
+		if m.settingsTab < len(settingsTabs)-1 {
+			m.settingsExcludePatterns.Blur()
+			m.settingsTab++
+			m.settingsFocusIndex = 0
+			if m.settingsTab == 1 {
+				m.loadSettingsThemes()
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Delegate to tab-specific handler
+	switch m.settingsTab {
+	case 0: // Release tab
+		return m.updateSettingsRelease(msg)
+	case 1: // Theme tab
+		return m.updateSettingsTheme(msg)
+	}
+
+	return m, nil
+}
+
+// updateSettingsRelease handles key events on the Release settings tab
+func (m model) updateSettingsRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "tab":
-		// Move to next field
 		m.settingsFocusIndex = (m.settingsFocusIndex + 1) % settingsReleaseFieldCount
 		return m.updateSettingsFocus()
 
 	case "shift+tab":
-		// Move to previous field
-		m.settingsFocusIndex--
-		if m.settingsFocusIndex < 0 {
-			m.settingsFocusIndex = settingsReleaseFieldCount - 1
-		}
+		m.settingsFocusIndex = (m.settingsFocusIndex - 1 + settingsReleaseFieldCount) % settingsReleaseFieldCount
 		return m.updateSettingsFocus()
 
 	case "enter":
-		// If on save button, save and close
+		// If on save button, save all settings and close
 		if m.settingsFocusIndex == 1 {
 			m.settingsError = m.validatePatterns()
 			if m.settingsError == "" {
-				m.saveSettings()
+				m.saveAllSettings()
 				m.showSettings = false
 				m.settingsExcludePatterns.Blur()
 				m.settingsFocusIndex = 0
@@ -71,6 +111,77 @@ func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// updateSettingsTheme handles key events on the Theme settings tab
+func (m model) updateSettingsTheme(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.settingsFocusIndex = (m.settingsFocusIndex + 1) % settingsThemeFieldCount
+		return m, nil
+
+	case "shift+tab":
+		m.settingsFocusIndex = (m.settingsFocusIndex - 1 + settingsThemeFieldCount) % settingsThemeFieldCount
+		return m, nil
+
+	case "up", "k":
+		if m.settingsFocusIndex == 0 && m.settingsThemeIndex > 0 {
+			m.settingsThemeIndex--
+			if m.settingsThemeIndex < len(m.settingsThemes) {
+				applyTheme(m.settingsThemes[m.settingsThemeIndex])
+			}
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.settingsFocusIndex == 0 && m.settingsThemeIndex < len(m.settingsThemes)-1 {
+			m.settingsThemeIndex++
+			applyTheme(m.settingsThemes[m.settingsThemeIndex])
+		}
+		return m, nil
+
+	case "enter":
+		// Save button: save all settings and close
+		if m.settingsFocusIndex == 1 {
+			m.settingsError = m.validatePatterns()
+			if m.settingsError == "" {
+				m.saveAllSettings()
+				m.showSettings = false
+				m.settingsFocusIndex = 0
+			}
+			return m, nil
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// loadSettingsThemes reloads themes from config file
+func (m *model) loadSettingsThemes() {
+	config, err := LoadConfig()
+	if err != nil {
+		m.settingsThemes = nil
+		m.settingsThemeIndex = 0
+		m.settingsThemeError = fmt.Sprintf("Failed to load config: %v", err)
+		return
+	}
+	m.settingsThemeError = ""
+	if len(config.Themes) == 0 {
+		m.settingsThemes = nil
+		m.settingsThemeIndex = 0
+		return
+	}
+	m.settingsThemes = config.Themes
+
+	// Set cursor to currently selected theme
+	m.settingsThemeIndex = 0
+	for i, tc := range config.Themes {
+		if tc.Name == config.SelectedTheme {
+			m.settingsThemeIndex = i
+			break
+		}
+	}
 }
 
 // updateSettingsFocus updates focus state based on settingsFocusIndex
@@ -151,13 +262,18 @@ func itoa(n int) string {
 	return string(digits)
 }
 
-// saveSettings saves the current settings to config file
-func (m *model) saveSettings() {
+// saveAllSettings saves all settings across tabs to config file
+func (m *model) saveAllSettings() {
 	config, err := LoadConfig()
 	if err != nil {
 		config = &AppConfig{}
 	}
+	// Release tab: exclude patterns
 	config.ExcludePatterns = m.settingsExcludePatterns.Value()
+	// Theme tab: selected theme
+	if m.settingsThemeIndex < len(m.settingsThemes) {
+		config.SelectedTheme = m.settingsThemes[m.settingsThemeIndex].Name
+	}
 	SaveConfig(config)
 }
 
@@ -198,10 +314,17 @@ func (m model) overlaySettings(background string) string {
 	switch m.settingsTab {
 	case 0: // Release tab
 		b.WriteString(m.renderReleaseSettings(modalWidth, modalHeight))
+	case 1: // Theme tab
+		b.WriteString(m.renderThemeSettings(modalWidth, modalHeight))
 	}
 
 	// Help footer text
-	helpText := helpStyle.Render("tab/shift+tab: focus • esc/C+q: close without saving")
+	var helpText string
+	if m.settingsTab == 1 {
+		helpText = helpStyle.Render("j/k: nav • tab: focus • enter: save • S-h/S-l: switch tab • esc/C+q: close")
+	} else {
+		helpText = helpStyle.Render("tab: focus • enter: save • S-h/S-l: switch tab • esc/C+q: close")
+	}
 
 	// Calculate inner dimensions (modal minus padding only, border is outside Width)
 	innerWidth := modalWidth - 4   // 4 horizontal padding (border is added outside)
@@ -223,7 +346,7 @@ func (m model) overlaySettings(background string) string {
 	// Create modal style with dynamic size (no bottom padding to keep help at very bottom)
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		PaddingTop(1).
 		PaddingLeft(2).
 		PaddingRight(2).
@@ -239,6 +362,24 @@ func (m model) overlaySettings(background string) string {
 
 // renderReleaseSettings renders the Release tab content
 func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
+	// Keep textarea styles in sync with current theme (for live preview)
+	m.settingsExcludePatterns.FocusedStyle.CursorLine = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	m.settingsExcludePatterns.FocusedStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	m.settingsExcludePatterns.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	m.settingsExcludePatterns.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.FocusedStyle.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.FocusedStyle.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.FocusedStyle.Base = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(currentTheme.Accent)
+	m.settingsExcludePatterns.BlurredStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	m.settingsExcludePatterns.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.BlurredStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.BlurredStyle.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.BlurredStyle.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	m.settingsExcludePatterns.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+
 	var b strings.Builder
 
 	// Setting title
@@ -285,6 +426,117 @@ func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 	}
 	button := btnStyle.Render(buttonText)
 	// Center the button
+	buttonWidth := lipgloss.Width(button)
+	padding := (contentWidth - buttonWidth) / 2
+	if padding > 0 {
+		b.WriteString(strings.Repeat(" ", padding))
+	}
+	b.WriteString(button)
+
+	return b.String()
+}
+
+// renderThemeSettings renders the Theme tab content
+func (m model) renderThemeSettings(modalWidth, modalHeight int) string {
+	var b strings.Builder
+
+	b.WriteString(settingsLabelStyle.Render("Select theme"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Themes are configured in ~/.relix/config.json"))
+	b.WriteString("\n\n")
+
+	if m.settingsThemeError != "" {
+		b.WriteString(settingsErrorStyle.Render(m.settingsThemeError))
+		return b.String()
+	}
+
+	if len(m.settingsThemes) == 0 {
+		b.WriteString(helpStyle.Render("No themes found in config file"))
+		return b.String()
+	}
+
+	// Get current active theme name from config
+	activeThemeName := ""
+	if config, err := LoadConfig(); err == nil {
+		activeThemeName = config.SelectedTheme
+	}
+
+	for i, tc := range m.settingsThemes {
+		isSelected := i == m.settingsThemeIndex
+		isActive := tc.Name == activeThemeName
+
+		// Build theme line with color preview dots (resolved with fallbacks)
+		r := themeFromConfig(tc)
+		accentDot := lipgloss.NewStyle().Foreground(r.Accent).Render("●")
+		fgDot := lipgloss.NewStyle().Foreground(r.Foreground).Render("●")
+		successDot := lipgloss.NewStyle().Foreground(r.Success).Render("●")
+		warningDot := lipgloss.NewStyle().Foreground(r.Warning).Render("●")
+		errorDot := lipgloss.NewStyle().Foreground(r.Error).Render("●")
+		dots := accentDot + fgDot + successDot + warningDot + errorDot
+
+		name := tc.Name
+		if isActive {
+			name += " (active)"
+		}
+
+		if isSelected {
+			prefix := lipgloss.NewStyle().Bold(true).Foreground(currentTheme.Accent).Render("> ")
+			nameStyled := lipgloss.NewStyle().Bold(true).Foreground(currentTheme.Accent).Render(name)
+			b.WriteString(prefix + dots + " " + nameStyled)
+		} else {
+			nameStyled := lipgloss.NewStyle().Foreground(currentTheme.Foreground).Render(name)
+			b.WriteString("  " + dots + " " + nameStyled)
+		}
+		b.WriteString("\n")
+	}
+
+	// Show theme detail preview with resolved colors
+	if m.settingsThemeIndex < len(m.settingsThemes) {
+		tc := m.settingsThemes[m.settingsThemeIndex]
+		resolved := themeFromConfig(tc)
+		b.WriteString("\n")
+
+		detailStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
+		renderColor := func(label string, value lipgloss.Color) string {
+			hex := string(value)
+			return detailStyle.Render(label+": ") + lipgloss.NewStyle().Foreground(value).Render(hex)
+		}
+
+		b.WriteString(renderColor("accent", resolved.Accent))
+		b.WriteString("  " + renderColor("accent_fg", resolved.AccentForeground))
+		b.WriteString("  " + renderColor("foreground", resolved.Foreground))
+		b.WriteString("\n")
+		b.WriteString(renderColor("notion", resolved.Notion))
+		b.WriteString("  " + renderColor("success", resolved.Success))
+		b.WriteString("\n")
+		b.WriteString(renderColor("warning", resolved.Warning))
+		b.WriteString("  " + renderColor("error", resolved.Error))
+		b.WriteString("\n")
+		b.WriteString(renderColor("env_develop", resolved.EnvDevelop))
+		b.WriteString("  " + renderColor("env_test", resolved.EnvTest))
+		b.WriteString("\n")
+		b.WriteString(renderColor("env_stage", resolved.EnvStage))
+		b.WriteString("  " + renderColor("env_prod", resolved.EnvProd))
+	}
+
+	// Theme count
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render(fmt.Sprintf("%d theme(s) available", len(m.settingsThemes))))
+
+	// Save button (centered)
+	b.WriteString("\n\n")
+	contentWidth := modalWidth - 4
+	if contentWidth < 30 {
+		contentWidth = 30
+	}
+	buttonText := "Save and close"
+	var btnStyle lipgloss.Style
+	if m.settingsFocusIndex == 1 {
+		btnStyle = buttonActiveStyle
+	} else {
+		btnStyle = buttonStyle
+	}
+	button := btnStyle.Render(buttonText)
 	buttonWidth := lipgloss.Width(button)
 	padding := (contentWidth - buttonWidth) / 2
 	if padding > 0 {

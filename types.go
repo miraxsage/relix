@@ -138,6 +138,10 @@ type AppConfig struct {
 
 	// Release settings
 	ExcludePatterns string `json:"exclude_patterns"` // File patterns to exclude from release, one per line
+
+	// Theme settings
+	SelectedTheme string        `json:"selected_theme,omitempty"` // Name of the active theme
+	Themes        []ThemeConfig `json:"themes,omitempty"`         // Available themes
 }
 
 // ReleaseStep represents a step in the release process
@@ -330,18 +334,29 @@ type HistoryIndexEntry struct {
 	Version     string    `json:"version"`
 }
 
+// ThemeANSIMap records the ANSI escape sequences lipgloss produced for each
+// semantic color at save time. Used to remap terminal output when the theme changes.
+type ThemeANSIMap struct {
+	Warning    string `json:"warning"`
+	Success    string `json:"success"`
+	Error      string `json:"error"`
+	Accent     string `json:"accent"`
+	Foreground string `json:"foreground"`
+}
+
 // ReleaseHistoryEntry represents full release details stored in individual files
 type ReleaseHistoryEntry struct {
 	HistoryIndexEntry
-	MRBranches     []string `json:"mr_branches"`
-	MRURLs         []string `json:"mr_urls,omitempty"`         // MR URLs corresponding to each branch
-	MRIIDs         []int    `json:"mr_iids,omitempty"`         // MR IIDs corresponding to each branch
-	MRCommitSHAs   []string `json:"mr_commit_shas,omitempty"`  // Commit SHAs of branch heads at release time
-	SourceBranch   string   `json:"source_branch"`
-	EnvBranch      string   `json:"env_branch"`
-	RootMerge      bool     `json:"root_merge"`
-	CreatedMRURL   string   `json:"created_mr_url"`
-	TerminalOutput []string `json:"terminal_output"`
+	MRBranches     []string      `json:"mr_branches"`
+	MRURLs         []string      `json:"mr_urls,omitempty"`         // MR URLs corresponding to each branch
+	MRIIDs         []int         `json:"mr_iids,omitempty"`         // MR IIDs corresponding to each branch
+	MRCommitSHAs   []string      `json:"mr_commit_shas,omitempty"`  // Commit SHAs of branch heads at release time
+	SourceBranch   string        `json:"source_branch"`
+	EnvBranch      string        `json:"env_branch"`
+	RootMerge      bool          `json:"root_merge"`
+	CreatedMRURL   string        `json:"created_mr_url"`
+	TerminalOutput []string      `json:"terminal_output"`
+	ThemeANSIMap   *ThemeANSIMap `json:"theme_ansi_map,omitempty"`
 }
 
 // fetchHistoryMsg is sent when history index is loaded

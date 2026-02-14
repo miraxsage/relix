@@ -274,7 +274,7 @@ func (m model) renderVersionSidebarSection(width int, contentHeight int) string 
 	}
 	if version != "" {
 		versionStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("189")).
+			Foreground(currentTheme.Foreground).
 			Bold(true)
 		sb.WriteString(versionStyle.Render(version))
 	}
@@ -283,7 +283,7 @@ func (m model) renderVersionSidebarSection(width int, contentHeight int) string 
 	content := sb.String()
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Bold(true).
 		Padding(0, 1).
 		Width(width).
@@ -317,13 +317,13 @@ func (m model) renderConfirmPreparing(width int, height int) string {
 		sourceBranch = m.releaseState.SourceBranch
 	}
 
-	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
-	envColor := "220" // default
+	textStyle := lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	envColor := string(currentTheme.Warning) // default
 	if m.selectedEnv != nil {
 		envColor = getEnvBranchColor(m.selectedEnv.Name)
 	}
 	envStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(envColor))
-	highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("62"))
+	highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(currentTheme.Accent)
 
 	var sb strings.Builder
 	sb.WriteString(textStyle.Render("We are almost ready to release ") + envStyle.Render(version) + textStyle.Render(" of selected MRs to ") + envStyle.Render(envName) + textStyle.Render(" environment,"))
@@ -435,23 +435,20 @@ If you agree, press enter and release it.
 	)
 
 	style := styles.DarkStyleConfig
-	envColor := "226" // default
+	envColor := string(currentTheme.Warning) // default
 	if m.selectedEnv != nil {
 		envColor = getEnvBranchColor(m.selectedEnv.Name)
-		if m.selectedEnv.Name == "PROD" {
-			envColor = "203"
-		}
 	}
-	style.Document.StylePrimitive.Color = stringPtr("189")
+	style.Document.StylePrimitive.Color = stringPtr(string(currentTheme.Foreground))
 	style.Strong.Color = stringPtr(envColor)
 	style.Code.BackgroundColor = stringPtr("237")
 	style.Code.Color = stringPtr("252")
-	style.Emph.Color = stringPtr("203")
+	style.Emph.Color = stringPtr(string(currentTheme.Error))
 	style.Emph.Italic = boolPtr(false)
-	style.Strikethrough.Color = stringPtr("9")
+	style.Strikethrough.Color = stringPtr(string(currentTheme.Error))
 	style.Strikethrough.CrossedOut = boolPtr(false)
 	style.LinkText.Color = stringPtr("255")
-	style.LinkText.BackgroundColor = stringPtr("62")
+	style.LinkText.BackgroundColor = stringPtr(string(currentTheme.Accent))
 	style.LinkText.Bold = boolPtr(true)
 	style.H1.Prefix = ""
 

@@ -15,13 +15,13 @@ import (
 func (m *model) initSourceBranchInput() tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = "e.g. release/rpb-1.0.0-root"
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	ti.Focus()
 	ti.CharLimit = 100
 	ti.Width = 50
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
-	ti.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
-	ti.Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	ti.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 
 	// Set default value based on version
 	version := m.versionInput.Value()
@@ -172,7 +172,7 @@ func (m model) renderSourceBranchInput(width int) string {
 
 	// Sub-prompt
 	subPrompt := "If the branch does not exist locally and remotely it will be created from root branch."
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("60")).Render(subPrompt))
+	sb.WriteString(lipgloss.NewStyle().Foreground(currentTheme.Notion).Render(subPrompt))
 	sb.WriteString("\n\n")
 
 	// Source branch input field
@@ -194,11 +194,11 @@ func (m model) renderSourceBranchInput(width int) string {
 
 // renderSourceBranchStatus renders the status text for the source branch check
 func (m model) renderSourceBranchStatus() string {
-	existsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	createdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36"))
-	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
+	existsStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning)
+	createdStyle := lipgloss.NewStyle().Foreground(currentTheme.Success)
+	rootSameStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning)
+	rootDiffStyle := lipgloss.NewStyle().Foreground(currentTheme.Error)
+	normalStyle := lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 
 	switch m.sourceBranchRemoteStatus {
 	case "checking":

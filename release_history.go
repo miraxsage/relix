@@ -77,6 +77,7 @@ func SaveReleaseHistory(state *ReleaseState, status string, terminalOutput []str
 		RootMerge:         state.RootMerge,
 		CreatedMRURL:      state.CreatedMRURL,
 		TerminalOutput:    terminalOutput,
+		ThemeANSIMap:      buildThemeANSIMap(currentTheme),
 	}
 
 	// Save individual detail file

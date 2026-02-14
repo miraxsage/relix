@@ -84,10 +84,15 @@ type model struct {
 
 	// Settings modal
 	showSettings            bool
-	settingsTab             int // Current tab index (0 = Release)
+	settingsTab             int // Current tab index (0 = Release, 1 = Theme)
 	settingsExcludePatterns textarea.Model
 	settingsError           string // Validation error message
 	settingsFocusIndex      int    // 0 = textarea, 1 = save button
+
+	// Theme settings (within settings modal)
+	settingsThemes     []ThemeConfig // Themes loaded from config for display
+	settingsThemeIndex int           // Cursor position in theme list
+	settingsThemeError string        // Error message when loading themes
 
 	// Release execution screen
 	releaseState                     *ReleaseState
@@ -144,12 +149,22 @@ func NewModel() model {
 	ta.ShowLineNumbers = true
 	ta.SetHeight(6)
 	ta.SetWidth(50)
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	ta.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.FocusedStyle.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.FocusedStyle.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	ta.FocusedStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62"))
-	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+		BorderForeground(currentTheme.Accent)
+	ta.BlurredStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.BlurredStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.BlurredStyle.CursorLineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.BlurredStyle.EndOfBuffer = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	ta.BlurredStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240"))

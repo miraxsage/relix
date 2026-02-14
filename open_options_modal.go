@@ -113,7 +113,7 @@ func (m model) handleOpenAction(options []OpenOption) (tea.Model, tea.Cmd) {
 func (m model) overlayOpenOptionsModal(background string) string {
 	var sb strings.Builder
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("105")).Render("Open")
+	title := lipgloss.NewStyle().Bold(true).Foreground(currentTheme.Accent).Render("Open")
 	sb.WriteString(title)
 	sb.WriteString("\n\n")
 

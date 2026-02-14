@@ -71,7 +71,7 @@ var (
 
 	settingsTabActiveStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
+				Foreground(defaultThemeColors.AccentForeground).
 				Background(lipgloss.Color("62")).
 				Padding(0, 2)
 
@@ -93,7 +93,7 @@ var (
 			Padding(0, 2)
 
 	buttonActiveStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("231")).
+				Foreground(defaultThemeColors.AccentForeground).
 				Background(lipgloss.Color("62")).
 				Bold(true).
 				Padding(0, 2)
@@ -121,7 +121,7 @@ var (
 	// History screen styles
 	historyTabActiveStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
+				Foreground(defaultThemeColors.AccentForeground).
 				Background(lipgloss.Color("62")).
 				Padding(0, 2)
 

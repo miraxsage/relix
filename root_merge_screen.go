@@ -107,7 +107,7 @@ func (m model) renderRootMergeContent(width int) string {
 		sourceBranch = m.releaseState.SourceBranch
 	}
 	flowText := sourceBranch + " -> root -> develop"
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(flowText))
+	sb.WriteString(lipgloss.NewStyle().Foreground(currentTheme.Warning).Render(flowText))
 	sb.WriteString("\n\n")
 
 	// Buttons
@@ -216,7 +216,7 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 	}
 	if sourceBranch != "" {
 		branchStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("189")).
+			Foreground(currentTheme.Foreground).
 			Bold(true)
 		// Wrap text if too long (width - 6 for border and padding)
 		wrappedLines := wrapText(sourceBranch, width-6)
@@ -236,7 +236,7 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 	content := sb.String()
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Width(width).
 		Height(contentHeight).
@@ -247,9 +247,9 @@ func (m model) renderSourceBranchSidebarSection(width int, contentHeight int) st
 
 // renderSourceBranchSidebarStatus renders the status indicator for the sidebar
 func (m model) renderSourceBranchSidebarStatus() string {
-	rootSameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	rootDiffStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	newBranchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36"))
+	rootSameStyle := lipgloss.NewStyle().Foreground(currentTheme.Warning)
+	rootDiffStyle := lipgloss.NewStyle().Foreground(currentTheme.Error)
+	newBranchStyle := lipgloss.NewStyle().Foreground(currentTheme.Success)
 
 	switch m.sourceBranchRemoteStatus {
 	case "exists-same":
@@ -278,15 +278,13 @@ func (m model) renderRootMergeSidebarSection(width int, contentHeight int) strin
 	}
 
 	if rootMerge {
-		// "Accepted" with color 220
 		acceptedStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("220")).
+			Foreground(currentTheme.Warning).
 			Bold(true)
 		sb.WriteString(acceptedStyle.Render("Accepted"))
 	} else {
-		// "Skip" with color 189
 		skipStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("189"))
+			Foreground(currentTheme.Foreground)
 		sb.WriteString(skipStyle.Render("Skip"))
 	}
 
@@ -294,7 +292,7 @@ func (m model) renderRootMergeSidebarSection(width int, contentHeight int) strin
 	content := sb.String()
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Width(width).
 		Height(contentHeight).

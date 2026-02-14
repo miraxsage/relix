@@ -23,13 +23,13 @@ var (
 func initVersionInput() textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = "e.g. 1.2.3"
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("60"))
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	ti.Focus()
 	ti.CharLimit = 20
 	ti.Width = 20
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
-	ti.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("189"))
-	ti.Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	ti.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 	return ti
 }
 
@@ -239,7 +239,7 @@ func (m model) renderMRsSidebarSection(width int, contentHeight int, branches []
 		}
 		hiddenCount := len(branches) - visibleCount
 		overflowText := fmt.Sprintf("+ %d mrs", hiddenCount)
-		sb.WriteString(mrBranchStyle.Foreground(lipgloss.Color("245")).Render(overflowText))
+		sb.WriteString(mrBranchStyle.Foreground(currentTheme.Notion).Render(overflowText))
 		sb.WriteString("\n")
 	}
 
@@ -247,7 +247,7 @@ func (m model) renderMRsSidebarSection(width int, contentHeight int, branches []
 	content := sb.String()
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Width(width).
 		Height(contentHeight).
@@ -282,7 +282,7 @@ func (m model) renderEnvSidebarSection(width int, contentHeight int) string {
 	content := sb.String()
 	borderedBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(currentTheme.Accent).
 		Padding(0, 1).
 		Width(width).
 		Height(contentHeight).
