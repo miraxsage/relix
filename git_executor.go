@@ -455,6 +455,7 @@ func FindProjectRoot() (string, error) {
 type ReleaseCommands struct {
 	workDir              string
 	version              string
+	baseBranch           string   // Base branch (e.g. "root")
 	envBranch            string
 	envName              string
 	excludePatterns      []string
@@ -464,10 +465,11 @@ type ReleaseCommands struct {
 }
 
 // NewReleaseCommands creates a new command builder
-func NewReleaseCommands(workDir, version string, env *Environment, patterns []string, branches []string) *ReleaseCommands {
+func NewReleaseCommands(workDir, version, baseBranch string, env *Environment, patterns []string, branches []string) *ReleaseCommands {
 	return &ReleaseCommands{
 		workDir:         workDir,
 		version:         version,
+		baseBranch:      baseBranch,
 		envBranch:       env.BranchName,
 		envName:         env.Name,
 		excludePatterns: patterns,
@@ -476,10 +478,11 @@ func NewReleaseCommands(workDir, version string, env *Environment, patterns []st
 }
 
 // NewReleaseCommandsWithSourceBranch creates a command builder with source branch configuration
-func NewReleaseCommandsWithSourceBranch(workDir, version string, env *Environment, patterns []string, branches []string, sourceBranch string, sourceBranchIsRemote bool) *ReleaseCommands {
+func NewReleaseCommandsWithSourceBranch(workDir, version, baseBranch string, env *Environment, patterns []string, branches []string, sourceBranch string, sourceBranchIsRemote bool) *ReleaseCommands {
 	return &ReleaseCommands{
 		workDir:              workDir,
 		version:              version,
+		baseBranch:           baseBranch,
 		envBranch:            env.BranchName,
 		envName:              env.Name,
 		excludePatterns:      patterns,
@@ -517,11 +520,11 @@ func (r *ReleaseCommands) Step1CheckoutRoot() []string {
 		// Source branch exists remotely - checkout from remote to reliably use it locally
 		return []string{fmt.Sprintf("git checkout -B %s origin/%s", r.ReleaseRootBranch(), r.ReleaseRootBranch())}
 	}
-	// Source branch doesn't exist - create from root after pull
+	// Source branch doesn't exist - create from base branch after pull
 	return []string{
-		"git checkout root",
+		fmt.Sprintf("git checkout %s", r.baseBranch),
 		"git pull",
-		fmt.Sprintf("git checkout -B %s root", r.ReleaseRootBranch()),
+		fmt.Sprintf("git checkout -B %s %s", r.ReleaseRootBranch(), r.baseBranch),
 	}
 }
 
@@ -565,21 +568,20 @@ func (r *ReleaseCommands) Step6Push() string {
 	return fmt.Sprintf("git push -u origin %s", r.EnvReleaseBranch())
 }
 
-// StepMergeToRoot returns the command to merge source branch to root
+// StepMergeToRoot returns the command to merge source branch to base branch
 func (r *ReleaseCommands) StepMergeToRoot() []string {
 	return []string{
-		"git checkout root",
+		fmt.Sprintf("git checkout %s", r.baseBranch),
 		fmt.Sprintf("git merge --no-edit %s", r.ReleaseRootBranch()),
 	}
 }
 
-// StepMergeToDevelop returns the command to merge root to develop and push
-// This is step 6c: git checkout develop && git pull && git merge root && git push
+// StepMergeToDevelop returns the command to merge base branch to develop and push
 func (r *ReleaseCommands) StepMergeToDevelop() []string {
 	return []string{
 		"git checkout develop",
 		"git pull",
-		"git merge --no-edit root",
+		fmt.Sprintf("git merge --no-edit %s", r.baseBranch),
 		"git push",
 	}
 }
@@ -777,12 +779,12 @@ func matchGlob(path, pattern string) bool {
 }
 
 // DeleteLocalBranches deletes local branches created during release
-func DeleteLocalBranches(workDir, version, envBranch string) error {
+func DeleteLocalBranches(workDir, version, envBranch, baseBranch string) error {
 	rootBranch := fmt.Sprintf("release/rpb-%s-root", version)
 	envReleaseBranch := fmt.Sprintf("release/rpb-%s-%s", version, envBranch)
 
-	// Checkout to root first to avoid "cannot delete checked out branch"
-	cmd := exec.Command("git", "checkout", "root")
+	// Checkout to base branch first to avoid "cannot delete checked out branch"
+	cmd := exec.Command("git", "checkout", baseBranch)
 	cmd.Dir = workDir
 	cmd.Run() // Ignore errors
 

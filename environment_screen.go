@@ -34,36 +34,66 @@ var (
 			Foreground(lipgloss.Color("189"))
 )
 
+// envColorByIndex returns the theme color for an environment by its position index
+func envColorByIndex(index int) lipgloss.Color {
+	switch index {
+	case 0:
+		return currentTheme.EnvDevelop
+	case 1:
+		return currentTheme.EnvTest
+	case 2:
+		return currentTheme.EnvStage
+	case 3:
+		return currentTheme.EnvProd
+	default:
+		return currentTheme.Foreground
+	}
+}
+
+// envFgByIndex returns the foreground color paired with an environment background by index
+func envFgByIndex(index int) lipgloss.Color {
+	switch index {
+	case 0:
+		return currentTheme.AccentForeground
+	case 1:
+		return currentTheme.WarningForeground
+	case 2:
+		return currentTheme.SuccessForeground
+	case 3:
+		return currentTheme.ErrorForeground
+	default:
+		return currentTheme.Foreground
+	}
+}
+
+// envIndexByName returns the position index for a given environment name
+// by looking it up in the runtime environments list. Falls back to -1.
+func envIndexByName(envName string) int {
+	envs := getEnvironments()
+	for i, e := range envs {
+		if e.Name == envName {
+			return i
+		}
+	}
+	return -1
+}
+
 // getEnvBranchColor returns the foreground color for branch name based on environment
 func getEnvBranchColor(envName string) string {
-	switch envName {
-	case "DEVELOP":
-		return string(currentTheme.EnvDevelop)
-	case "TEST":
-		return string(currentTheme.EnvTest)
-	case "STAGE":
-		return string(currentTheme.EnvStage)
-	case "PROD":
-		return string(currentTheme.EnvProd)
-	default:
+	idx := envIndexByName(envName)
+	if idx < 0 {
 		return "231"
 	}
+	return string(envColorByIndex(idx))
 }
 
 // getEnvHintStyle returns the style for environment name in hint based on env name
 func getEnvHintStyle(envName string) lipgloss.Style {
-	switch envName {
-	case "DEVELOP":
-		return lipgloss.NewStyle().Foreground(currentTheme.AccentForeground).Background(currentTheme.EnvDevelop)
-	case "TEST":
-		return lipgloss.NewStyle().Foreground(currentTheme.WarningForeground).Background(currentTheme.EnvTest)
-	case "STAGE":
-		return lipgloss.NewStyle().Foreground(currentTheme.SuccessForeground).Background(currentTheme.EnvStage)
-	case "PROD":
-		return lipgloss.NewStyle().Foreground(currentTheme.ErrorForeground).Background(currentTheme.EnvProd)
-	default:
+	idx := envIndexByName(envName)
+	if idx < 0 {
 		return lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	}
+	return lipgloss.NewStyle().Foreground(envFgByIndex(idx)).Background(envColorByIndex(idx))
 }
 
 // getEnvBranchStyle returns the style for branch name in hint

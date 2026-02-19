@@ -67,12 +67,28 @@ func (m model) executeCommand(name string) (tea.Model, tea.Cmd) {
 		m.closeAllModals()
 		m.showSettings = true
 		m.settingsTab = 0
+		m.settingsFocusIndex = 0
 		// Load current settings
 		if config, err := LoadConfig(); err == nil {
 			m.settingsExcludePatterns.SetValue(config.ExcludePatterns)
+			// Load base branch
+			baseBranch := config.BaseBranch
+			if baseBranch == "" {
+				baseBranch = "root"
+			}
+			m.settingsBaseBranch.SetValue(baseBranch)
+			// Load environment settings
+			envs := config.Environments
+			if len(envs) == 0 {
+				envs = defaultEnvironments()
+			}
+			for i := 0; i < 4 && i < len(envs); i++ {
+				m.settingsEnvNames[i].SetValue(strings.ToUpper(envs[i].Name))
+				m.settingsEnvBranches[i].SetValue(envs[i].BranchName)
+			}
 		}
 		(&m).updateTextareaTheme()
-		return m, m.settingsExcludePatterns.Focus()
+		return m, m.settingsBaseBranch.Focus()
 
 	case "logout":
 		m.closeAllModals()

@@ -55,11 +55,27 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Open settings modal
 		m.showSettings = true
 		m.settingsTab = 0
+		m.settingsFocusIndex = 0
 		if config, err := LoadConfig(); err == nil {
 			m.settingsExcludePatterns.SetValue(config.ExcludePatterns)
+			// Load base branch
+			baseBranch := config.BaseBranch
+			if baseBranch == "" {
+				baseBranch = "root"
+			}
+			m.settingsBaseBranch.SetValue(baseBranch)
+			// Load environment settings
+			envs := config.Environments
+			if len(envs) == 0 {
+				envs = defaultEnvironments()
+			}
+			for i := 0; i < 4 && i < len(envs); i++ {
+				m.settingsEnvNames[i].SetValue(strings.ToUpper(envs[i].Name))
+				m.settingsEnvBranches[i].SetValue(envs[i].BranchName)
+			}
 		}
 		(&m).updateTextareaTheme()
-		return m, m.settingsExcludePatterns.Focus()
+		return m, m.settingsBaseBranch.Focus()
 	}
 
 	return m, nil
