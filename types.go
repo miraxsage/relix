@@ -24,6 +24,7 @@ const (
 	screenRelease
 	screenHistoryList
 	screenHistoryDetail
+	screenSettings
 )
 
 // Environment represents a deployment environment
@@ -143,9 +144,10 @@ type AppConfig struct {
 	SelectedProjectShortName string `json:"selected_project_short_name"`
 
 	// Release settings
-	BaseBranch      string      `json:"base_branch"`                // Base branch for releases (default "root")
-	Environments    []EnvConfig `json:"environments,omitempty"`     // Customizable environment branches
-	ExcludePatterns string      `json:"exclude_patterns"`           // File patterns to exclude from release, one per line
+	BaseBranch        string      `json:"base_branch"`                       // Base branch for releases (default "root")
+	Environments      []EnvConfig `json:"environments,omitempty"`            // Customizable environment branches
+	ExcludePatterns   string      `json:"exclude_patterns"`                  // File patterns to exclude from release, one per line
+	PipelineJobsRegex string      `json:"pipeline_jobs_regex,omitempty"`     // Regex to match observable pipeline job names
 
 	// Theme settings
 	SelectedTheme string        `json:"selected_theme,omitempty"` // Name of the active theme

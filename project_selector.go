@@ -80,6 +80,7 @@ func (m model) updateProjectSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			// Reset list screen state (clears selections and hides old content)
 			m.initListScreen()
+			m.updateListSize()
 
 			// Refresh MRs for the new project with loading modal
 			m.loadingMRs = true

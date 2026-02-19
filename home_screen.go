@@ -52,12 +52,17 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.initHistoryListScreen()
 		return m, tea.Batch(m.spinner.Tick, m.fetchHistory())
 	case "s":
-		// Open settings modal
-		m.showSettings = true
+		// Open settings screen
+		m.settingsPreviousScreen = m.screen
 		m.settingsTab = 0
 		m.settingsFocusIndex = 0
 		if config, err := LoadConfig(); err == nil {
 			m.settingsExcludePatterns.SetValue(config.ExcludePatterns)
+			pipelineRegex := config.PipelineJobsRegex
+			if pipelineRegex == "" {
+				pipelineRegex = defaultPipelineJobsRegex
+			}
+			m.settingsPipelineRegex.SetValue(pipelineRegex)
 			// Load base branch
 			baseBranch := config.BaseBranch
 			if baseBranch == "" {
@@ -75,6 +80,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		(&m).updateTextareaTheme()
+		m.screen = screenSettings
+		(&m).initSettingsViewport()
 		return m, m.settingsBaseBranch.Focus()
 	}
 

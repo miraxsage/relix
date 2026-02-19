@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1870,58 +1871,6 @@ func (m *model) pipelineTick() tea.Cmd {
 	})
 }
 
-// getEnvJobSuffix returns the job suffix for the given environment branch
-func getEnvJobSuffix(envBranch string) string {
-	switch envBranch {
-	case "develop":
-		return "dev01"
-	case "testing":
-		return "test01"
-	case "stable":
-		return "stage01"
-	case "master", "main":
-		return "prod01"
-	default:
-		return ""
-	}
-}
-
-// isRelevantJob checks if a job is a Package or Deploy job for our apps
-func isRelevantJob(jobName, envSuffix string) bool {
-	if envSuffix == "" {
-		return false
-	}
-
-	// App names to track
-	apps := []string{"Main", "Admin", "JudgePersonal", "Touch"}
-
-	// Normalize job name for comparison
-	jobNameLower := strings.ToLower(jobName)
-
-	for _, app := range apps {
-		// Check Package jobs: "Package Application {App} {env}"
-		packagePattern := strings.ToLower(fmt.Sprintf("Package Application %s %s", app, envSuffix))
-		if jobNameLower == packagePattern {
-			return true
-		}
-
-		// Check Deploy jobs: "Deploy Application {App} {env}" or "Deploy Application {App} for {env}"
-		deployPattern1 := strings.ToLower(fmt.Sprintf("Deploy Application %s %s", app, envSuffix))
-		deployPattern2 := strings.ToLower(fmt.Sprintf("Deploy Application %s for %s", app, envSuffix))
-		if jobNameLower == deployPattern1 || jobNameLower == deployPattern2 {
-			return true
-		}
-
-		// Also check "Deploy Application {App} to {env}" pattern
-		deployPattern3 := strings.ToLower(fmt.Sprintf("Deploy Application %s to %s", app, envSuffix))
-		if jobNameLower == deployPattern3 {
-			return true
-		}
-	}
-
-	return false
-}
-
 // checkPipelineStatus fetches MR and pipeline status from GitLab API
 func (m *model) checkPipelineStatus() tea.Cmd {
 	return func() tea.Msg {
@@ -1987,12 +1936,15 @@ func (m *model) checkPipelineStatus() tea.Cmd {
 			return pipelineStatusMsg{status: status, err: err}
 		}
 
-		// Get the job suffix for this environment
-		envSuffix := getEnvJobSuffix(m.releaseState.Environment.BranchName)
+		// Load pipeline jobs regex from config to filter observable jobs
+		var pipelineRegex *regexp.Regexp
+		if cfg, err := LoadConfig(); err == nil && cfg.PipelineJobsRegex != "" {
+			pipelineRegex, _ = regexp.Compile(cfg.PipelineJobsRegex)
+		}
 
-		// Count relevant jobs by status
+		// Count jobs by status (filtered by regex when set, otherwise all jobs)
 		for _, job := range jobs {
-			if !isRelevantJob(job.Name, envSuffix) {
+			if pipelineRegex != nil && !pipelineRegex.MatchString(job.Name) {
 				continue
 			}
 

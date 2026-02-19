@@ -64,13 +64,18 @@ func (m model) executeCommand(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "settings":
+		m.settingsPreviousScreen = m.screen
 		m.closeAllModals()
-		m.showSettings = true
 		m.settingsTab = 0
 		m.settingsFocusIndex = 0
 		// Load current settings
 		if config, err := LoadConfig(); err == nil {
 			m.settingsExcludePatterns.SetValue(config.ExcludePatterns)
+			pipelineRegex := config.PipelineJobsRegex
+			if pipelineRegex == "" {
+				pipelineRegex = defaultPipelineJobsRegex
+			}
+			m.settingsPipelineRegex.SetValue(pipelineRegex)
 			// Load base branch
 			baseBranch := config.BaseBranch
 			if baseBranch == "" {
@@ -88,6 +93,8 @@ func (m model) executeCommand(name string) (tea.Model, tea.Cmd) {
 			}
 		}
 		(&m).updateTextareaTheme()
+		m.screen = screenSettings
+		(&m).initSettingsViewport()
 		return m, m.settingsBaseBranch.Focus()
 
 	case "logout":

@@ -82,15 +82,17 @@ type model struct {
 	projectFilter        string
 	selectedProject      *Project
 
-	// Settings modal
-	showSettings            bool
+	// Settings screen
+	settingsPreviousScreen  screen // Screen to return to when closing settings
+	settingsViewport        viewport.Model
 	settingsTab             int // Current tab index (0 = Release, 1 = Theme)
 	settingsBaseBranch      textinput.Model
 	settingsEnvNames        [4]textinput.Model
 	settingsEnvBranches     [4]textinput.Model
 	settingsExcludePatterns textarea.Model
+	settingsPipelineRegex   textinput.Model
 	settingsError           string // Validation error message
-	settingsFocusIndex      int    // 0=base branch, 1-8=env fields, 9=textarea, 10=save button
+	settingsFocusIndex      int    // 0=base branch, 1-8=env fields, 9=textarea, 10=pipeline regex, 11=save button
 
 	// Theme settings (within settings modal)
 	settingsThemes     []ThemeConfig // Themes loaded from config for display
@@ -182,13 +184,23 @@ func NewModel() model {
 	baseBranchInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	baseBranchInput.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 
+	// Initialize settings pipeline regex input
+	pipelineRegexInput := textinput.New()
+	pipelineRegexInput.Placeholder = `e.g. (Package|Deploy) Application .+ (dev|test|stage|prod)\d+`
+	pipelineRegexInput.CharLimit = 500
+	pipelineRegexInput.Width = 40
+	pipelineRegexInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	pipelineRegexInput.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	pipelineRegexInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	pipelineRegexInput.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+
 	// Initialize settings environment name and branch inputs
 	var envNames [4]textinput.Model
 	var envBranches [4]textinput.Model
 	for i := 0; i < 4; i++ {
 		nameInput := textinput.New()
 		nameInput.CharLimit = 20
-		nameInput.Width = 7
+		nameInput.Width = 10
 		nameInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 		nameInput.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
 		nameInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
@@ -215,6 +227,7 @@ func NewModel() model {
 		settingsEnvNames:        envNames,
 		settingsEnvBranches:     envBranches,
 		settingsExcludePatterns: ta,
+		settingsPipelineRegex:   pipelineRegexInput,
 		environments:            getEnvironments(),
 		selectedMRs:             make(map[int]bool),
 		historyMRDetailsMap:     make(map[int]*MergeRequestDetails),
@@ -238,14 +251,6 @@ func (m *model) closeAllModals() {
 	m.showProjectSelector = false
 	m.showErrorModal = false
 	m.errorModalMsg = ""
-	m.showSettings = false
-	m.settingsError = ""
-	m.settingsBaseBranch.Blur()
-	for i := 0; i < 4; i++ {
-		m.settingsEnvNames[i].Blur()
-		m.settingsEnvBranches[i].Blur()
-	}
-	m.settingsExcludePatterns.Blur()
 	m.showHistoryDeleteConfirm = false
 	m.closeOpenOptionsModal()
 }
@@ -282,11 +287,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Handle settings modal if open
-		if m.showSettings {
-			return m.updateSettings(msg)
-		}
-
 		// Handle project selector if open
 		if m.showProjectSelector {
 			return m.updateProjectSelector(msg)
@@ -297,8 +297,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCommandMenu(msg)
 		}
 
-		// Open command menu with "/" (except on auth screen)
-		if msg.String() == "/" && m.screen != screenAuth {
+		// Open command menu with "/" (except on auth and settings screens)
+		if msg.String() == "/" && m.screen != screenAuth && m.screen != screenSettings {
 			m.closeAllModals()
 			m.showCommandMenu = true
 			m.commandMenuIndex = 0
@@ -330,6 +330,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateHistoryList(msg)
 		case screenHistoryDetail:
 			return m.updateHistoryDetail(msg)
+		case screenSettings:
+			return m.updateSettings(msg)
 		}
 
 	case tea.WindowSizeMsg:
@@ -353,6 +355,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.screen == screenHistoryDetail {
 			m.initHistoryDetailScreen()
+		}
+		if m.screen == screenSettings {
+			m.updateSettingsSize()
 		}
 
 	case checkCredsMsg:
@@ -646,7 +651,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Update settings inputs for non-KeyMsg messages (like cursor blink)
-	if m.showSettings {
+	if m.screen == screenSettings {
 		var cmd tea.Cmd
 		m.settingsBaseBranch, cmd = m.settingsBaseBranch.Update(msg)
 		cmds = append(cmds, cmd)
@@ -658,6 +663,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.settingsExcludePatterns, cmd = m.settingsExcludePatterns.Update(msg)
 		cmds = append(cmds, cmd)
+		m.settingsPipelineRegex, cmd = m.settingsPipelineRegex.Update(msg)
+		cmds = append(cmds, cmd)
+		m.refreshSettingsViewport()
 	}
 
 	// Update version input for non-KeyMsg messages (like cursor blink)
@@ -707,6 +715,8 @@ func (m model) View() string {
 		view = m.viewHistoryList()
 	case screenHistoryDetail:
 		view = m.viewHistoryDetail()
+	case screenSettings:
+		view = m.viewSettings()
 	}
 
 	// Overlay loading modal if loading MRs or history
@@ -722,11 +732,6 @@ func (m model) View() string {
 	// Overlay project selector if open
 	if m.showProjectSelector {
 		view = m.overlayProjectSelector(view)
-	}
-
-	// Overlay settings modal if open
-	if m.showSettings {
-		view = m.overlaySettings(view)
 	}
 
 	// Overlay error modal if open
