@@ -9,3 +9,9 @@ dist/
 *.swp
 *.swo
 .claude/
+.agents/
+dist/
+relix
+.ai-factory*
+AGENTS.md
+
