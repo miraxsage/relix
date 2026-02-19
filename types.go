@@ -129,6 +129,12 @@ type fetchProjectsMsg struct {
 	err      error
 }
 
+// EnvConfig represents a configurable environment with its display name and git branch
+type EnvConfig struct {
+	Name       string `json:"name"`        // Display name (shown UPPERCASED in UI)
+	BranchName string `json:"branch_name"` // Git branch name
+}
+
 // AppConfig represents the application configuration saved to file
 type AppConfig struct {
 	SelectedProjectID        int    `json:"selected_project_id"`
@@ -137,7 +143,9 @@ type AppConfig struct {
 	SelectedProjectShortName string `json:"selected_project_short_name"`
 
 	// Release settings
-	ExcludePatterns string `json:"exclude_patterns"` // File patterns to exclude from release, one per line
+	BaseBranch      string      `json:"base_branch"`                // Base branch for releases (default "root")
+	Environments    []EnvConfig `json:"environments,omitempty"`     // Customizable environment branches
+	ExcludePatterns string      `json:"exclude_patterns"`           // File patterns to exclude from release, one per line
 
 	// Theme settings
 	SelectedTheme string        `json:"selected_theme,omitempty"` // Name of the active theme
@@ -180,6 +188,7 @@ type ReleaseState struct {
 	MRCommitSHAs         []string    `json:"mr_commit_shas,omitempty"` // Commit SHAs of branch heads at release time
 	Environment          Environment `json:"environment"`
 	Version              string      `json:"version"`
+	BaseBranch           string      `json:"base_branch"`            // Base branch (e.g. "root") for crash-recovery
 	SourceBranch         string      `json:"source_branch"`          // Source branch for accumulating MRs (e.g. release/rpb_1.0.0_root)
 	SourceBranchIsRemote bool        `json:"source_branch_is_remote"` // Whether source branch exists on remote (determines checkout strategy)
 	RootMerge            bool        `json:"root_merge"`             // Whether to merge release to root and root to develop

@@ -194,16 +194,21 @@ func (m *model) appendRecoveryMetadata(workDir string, state *ReleaseState) {
 	m.releaseOutputBuffer = append(m.releaseOutputBuffer, headerStyle.Render("Release recover metadata:"))
 
 	// Get commit IDs for various branches
-	rootCommit := GetBranchCommitID(workDir, "root")
-	originRootCommit := GetBranchCommitID(workDir, "origin/root")
+	baseBranch := state.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "root"
+	}
+	rootCommit := GetBranchCommitID(workDir, baseBranch)
+	originRootCommit := GetBranchCommitID(workDir, "origin/"+baseBranch)
 	originEnvCommit := GetBranchCommitID(workDir, "origin/"+state.Environment.BranchName)
 
 	// Calculate max label width for alignment
-	// Labels: "root:", "origin/root:", "origin/<env>:", "origin/<source>:"
+	baseBranchLabel := baseBranch + ":"
+	originBaseBranchLabel := "origin/" + baseBranch + ":"
 	sourceBranchLabel := "origin/" + state.SourceBranch + ":"
 	envBranchLabel := "origin/" + state.Environment.BranchName + ":"
 
-	maxWidth := len("origin/root:")
+	maxWidth := len(originBaseBranchLabel)
 	if len(envBranchLabel) > maxWidth {
 		maxWidth = len(envBranchLabel)
 	}
@@ -214,8 +219,8 @@ func (m *model) appendRecoveryMetadata(workDir string, state *ReleaseState) {
 	// Format string with dynamic width
 	format := fmt.Sprintf("%%-%ds %%s", maxWidth)
 
-	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, "root:", rootCommit))
-	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, "origin/root:", originRootCommit))
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, baseBranchLabel, rootCommit))
+	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, originBaseBranchLabel, originRootCommit))
 	m.releaseOutputBuffer = append(m.releaseOutputBuffer, fmt.Sprintf(format, envBranchLabel, originEnvCommit))
 
 	// Only show source branch if it existed remotely on release start
@@ -582,7 +587,11 @@ func (m model) renderReleaseStatus(width int) string {
 			)
 		} else if state.LastError.Code == "COMMIT_FAILED" {
 			// Commit failed (likely linter error) - tell user to fix in release-root branch
-			cmds := NewReleaseCommandsWithSourceBranch(state.WorkDir, state.Version, &state.Environment, nil, nil, state.SourceBranch, state.SourceBranchIsRemote)
+			statusBaseBranch := state.BaseBranch
+			if statusBaseBranch == "" {
+				statusBaseBranch = "root"
+			}
+			cmds := NewReleaseCommandsWithSourceBranch(state.WorkDir, state.Version, statusBaseBranch, &state.Environment, nil, nil, state.SourceBranch, state.SourceBranchIsRemote)
 			status = fmt.Sprintf("Release is %s on %s because of\n%s %s\nFix errors in %s branch, commit them and press %s",
 				releaseSuspendedStyle.Render("SUSPENDED"),
 				releasePercentStyle.Render(progressText),
@@ -918,6 +927,7 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 		MRCommitSHAs:         mrCommitSHAs,
 		Environment:          *m.selectedEnv,
 		Version:              m.versionInput.Value(),
+		BaseBranch:           getBaseBranch(),
 		SourceBranch:         m.sourceBranchInput.Value(),
 		SourceBranchIsRemote: sourceBranchIsRemote,
 		RootMerge:            m.rootMergeSelection,
@@ -963,7 +973,11 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 		config, _ := LoadConfig()
 		patterns := strings.Split(config.ExcludePatterns, "\n")
 
-		cmds := NewReleaseCommandsWithSourceBranch(workDir, state.Version, &state.Environment, patterns, state.MRBranches, state.SourceBranch, state.SourceBranchIsRemote)
+		baseBranch := state.BaseBranch
+		if baseBranch == "" {
+			baseBranch = "root"
+		}
+		cmds := NewReleaseCommandsWithSourceBranch(workDir, state.Version, baseBranch, &state.Environment, patterns, state.MRBranches, state.SourceBranch, state.SourceBranchIsRemote)
 
 		var command string
 		var output string
@@ -1125,8 +1139,8 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 				output += output3
 				m.program.Send(releaseSubStepDoneMsg{})
 
-				// Push root with tags
-				pushRootCmd := "git push origin root --tags"
+				// Push base branch with tags
+				pushRootCmd := fmt.Sprintf("git push origin %s --tags", baseBranch)
 				output4, err4 := executor.RunCommand(pushRootCmd)
 				if err4 != nil {
 					return releaseStepCompleteMsg{step: step, err: err4, output: output + output4}
@@ -1164,8 +1178,8 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			}
 
 		case ReleaseStepSwitchToRoot:
-			// Switch back to root branch as final step
-			output, err = executor.RunCommand("git checkout root")
+			// Switch back to base branch as final step
+			output, err = executor.RunCommand(fmt.Sprintf("git checkout %s", baseBranch))
 
 		default:
 			return releaseStepCompleteMsg{step: step, err: nil}
@@ -1228,7 +1242,11 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 			// Reset staged changes and switch to release-root branch
 			executor := NewGitExecutor(state.WorkDir, nil)
 			executor.RunCommand("git reset")
-			cmds := NewReleaseCommandsWithSourceBranch(state.WorkDir, state.Version, &state.Environment, nil, nil, state.SourceBranch, state.SourceBranchIsRemote)
+			errBaseBranch := state.BaseBranch
+			if errBaseBranch == "" {
+				errBaseBranch = "root"
+			}
+			cmds := NewReleaseCommandsWithSourceBranch(state.WorkDir, state.Version, errBaseBranch, &state.Environment, nil, nil, state.SourceBranch, state.SourceBranchIsRemote)
 			executor.RunCommand(fmt.Sprintf("git checkout %s", cmds.ReleaseRootBranch()))
 			executor.Close()
 
@@ -1405,7 +1423,11 @@ func (m *model) createGitLabMR() tea.Cmd {
 		state := m.releaseState
 		client := NewGitLabClient(m.creds.GitLabURL, m.creds.Token)
 
-		cmds := NewReleaseCommands(state.WorkDir, state.Version, &state.Environment, nil, nil)
+		mrBaseBranch := state.BaseBranch
+		if mrBaseBranch == "" {
+			mrBaseBranch = "root"
+		}
+		cmds := NewReleaseCommands(state.WorkDir, state.Version, mrBaseBranch, &state.Environment, nil, nil)
 		sourceBranch := cmds.EnvReleaseBranch()
 		targetBranch := state.Environment.BranchName
 
@@ -1512,6 +1534,10 @@ func (m model) abortRelease() (tea.Model, tea.Cmd) {
 		workDir := m.releaseState.WorkDir
 		version := m.releaseState.Version
 		envBranch := m.releaseState.Environment.BranchName
+		abortBase := m.releaseState.BaseBranch
+		if abortBase == "" {
+			abortBase = "root"
+		}
 
 		// Kill any running process
 		if m.releaseExecutor != nil {
@@ -1523,11 +1549,11 @@ func (m model) abortRelease() (tea.Model, tea.Cmd) {
 		// Reset to clean state
 		exec := NewGitExecutor(workDir, nil)
 		exec.RunCommand("git reset --hard")
-		exec.RunCommand("git checkout root")
+		exec.RunCommand(fmt.Sprintf("git checkout %s", abortBase))
 		exec.Close()
 
 		// Delete created branches
-		DeleteLocalBranches(workDir, version, envBranch)
+		DeleteLocalBranches(workDir, version, envBranch, abortBase)
 	}
 
 	// Clear state
@@ -1571,6 +1597,10 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 		workDir := m.releaseState.WorkDir
 		version := m.releaseState.Version
 		envBranch := m.releaseState.Environment.BranchName
+		abortBaseBranch := m.releaseState.BaseBranch
+		if abortBaseBranch == "" {
+			abortBaseBranch = "root"
+		}
 
 		// Kill any running process
 		if m.releaseExecutor != nil {
@@ -1581,7 +1611,7 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 
 		// Delete remote branches if requested
 		if deleteRemote {
-			cmds := NewReleaseCommandsWithSourceBranch(workDir, version, &m.releaseState.Environment, nil, nil, m.releaseState.SourceBranch, m.releaseState.SourceBranchIsRemote)
+			cmds := NewReleaseCommandsWithSourceBranch(workDir, version, abortBaseBranch, &m.releaseState.Environment, nil, nil, m.releaseState.SourceBranch, m.releaseState.SourceBranchIsRemote)
 			exec := NewGitExecutor(workDir, nil)
 
 			// Delete env release branch (e.g. release/rpb-1.0.0-dev)
@@ -1598,11 +1628,11 @@ func (m model) abortReleaseWithRemoteDeletion(deleteRemote bool) (tea.Model, tea
 		// Reset to clean state
 		exec2 := NewGitExecutor(workDir, nil)
 		exec2.RunCommand("git reset --hard")
-		exec2.RunCommand("git checkout root")
+		exec2.RunCommand(fmt.Sprintf("git checkout %s", abortBaseBranch))
 		exec2.Close()
 
 		// Delete created branches
-		DeleteLocalBranches(workDir, version, envBranch)
+		DeleteLocalBranches(workDir, version, envBranch, abortBaseBranch)
 	}
 
 	// Clear state
@@ -1656,14 +1686,19 @@ func (m model) renderRootPushHint() string {
 	// Get tag name (already calculated and stored in state)
 	tagName := state.TagName
 
+	hintBaseBranch := state.BaseBranch
+	if hintBaseBranch == "" {
+		hintBaseBranch = "root"
+	}
+
 	if state.RootMerge {
-		// With RootMerge: {branch} will be merged to root, tagged as {tag}, then root to develop
+		// With RootMerge: {branch} will be merged to base, tagged as {tag}, then base to develop
 		return fmt.Sprintf("%s %s %s%s %s %s %s%s %s%s",
 			branchStyle.Render(state.SourceBranch),
 			textStyle.Render("will be merged to"),
-			branchStyle.Render("root"),
+			branchStyle.Render(hintBaseBranch),
 			textStyle.Render(","),
-			branchStyle.Render("root"),
+			branchStyle.Render(hintBaseBranch),
 			textStyle.Render("tagged as"),
 			tagStyle.Render(tagName),
 			textStyle.Render(" and merged to"),

@@ -85,9 +85,12 @@ type model struct {
 	// Settings modal
 	showSettings            bool
 	settingsTab             int // Current tab index (0 = Release, 1 = Theme)
+	settingsBaseBranch      textinput.Model
+	settingsEnvNames        [4]textinput.Model
+	settingsEnvBranches     [4]textinput.Model
 	settingsExcludePatterns textarea.Model
 	settingsError           string // Validation error message
-	settingsFocusIndex      int    // 0 = textarea, 1 = save button
+	settingsFocusIndex      int    // 0=base branch, 1-8=env fields, 9=textarea, 10=save button
 
 	// Theme settings (within settings modal)
 	settingsThemes     []ThemeConfig // Themes loaded from config for display
@@ -169,23 +172,54 @@ func NewModel() model {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(currentTheme.Notion)
 
+	// Initialize settings base branch input
+	baseBranchInput := textinput.New()
+	baseBranchInput.Placeholder = "e.g. root, main, master"
+	baseBranchInput.CharLimit = 50
+	baseBranchInput.Width = 40
+	baseBranchInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+	baseBranchInput.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+	baseBranchInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+	baseBranchInput.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+
+	// Initialize settings environment name and branch inputs
+	var envNames [4]textinput.Model
+	var envBranches [4]textinput.Model
+	for i := 0; i < 4; i++ {
+		nameInput := textinput.New()
+		nameInput.CharLimit = 20
+		nameInput.Width = 7
+		nameInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+		nameInput.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+		nameInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+		nameInput.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+		envNames[i] = nameInput
+
+		branchInput := textinput.New()
+		branchInput.CharLimit = 50
+		branchInput.Width = 20
+		branchInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(currentTheme.Notion)
+		branchInput.PromptStyle = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+		branchInput.TextStyle = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
+		branchInput.Cursor.Style = lipgloss.NewStyle().Foreground(currentTheme.Accent)
+		envBranches[i] = branchInput
+	}
+
 	return model{
 		screen:                  screenLoading,
 		inputs:                  initAuthInputs(),
 		focusIndex:              0,
 		spinner:                 s,
 		loading:                 true, // Initial loading state
+		settingsBaseBranch:      baseBranchInput,
+		settingsEnvNames:        envNames,
+		settingsEnvBranches:     envBranches,
 		settingsExcludePatterns: ta,
-		environments: []Environment{
-			{Name: "DEVELOP", BranchName: "develop"},
-			{Name: "TEST", BranchName: "testing"},
-			{Name: "STAGE", BranchName: "stable"},
-			{Name: "PROD", BranchName: "master"},
-		},
-		selectedMRs:          make(map[int]bool),
-		historyMRDetailsMap:  make(map[int]*MergeRequestDetails),
-		rootMergeSelection:   true, // Default to "Yes, merge it"
-		rootMergeButtonIndex: 0,    // Default button is "Yes, merge it"
+		environments:            getEnvironments(),
+		selectedMRs:             make(map[int]bool),
+		historyMRDetailsMap:     make(map[int]*MergeRequestDetails),
+		rootMergeSelection:      true, // Default to "Yes, merge it"
+		rootMergeButtonIndex:    0,    // Default button is "Yes, merge it"
 	}
 }
 
@@ -206,6 +240,11 @@ func (m *model) closeAllModals() {
 	m.errorModalMsg = ""
 	m.showSettings = false
 	m.settingsError = ""
+	m.settingsBaseBranch.Blur()
+	for i := 0; i < 4; i++ {
+		m.settingsEnvNames[i].Blur()
+		m.settingsEnvBranches[i].Blur()
+	}
 	m.settingsExcludePatterns.Blur()
 	m.showHistoryDeleteConfirm = false
 	m.closeOpenOptionsModal()
@@ -606,9 +645,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	// Update settings textarea for non-KeyMsg messages (like cursor blink)
+	// Update settings inputs for non-KeyMsg messages (like cursor blink)
 	if m.showSettings {
 		var cmd tea.Cmd
+		m.settingsBaseBranch, cmd = m.settingsBaseBranch.Update(msg)
+		cmds = append(cmds, cmd)
+		for i := 0; i < 4; i++ {
+			m.settingsEnvNames[i], cmd = m.settingsEnvNames[i].Update(msg)
+			cmds = append(cmds, cmd)
+			m.settingsEnvBranches[i], cmd = m.settingsEnvBranches[i].Update(msg)
+			cmds = append(cmds, cmd)
+		}
 		m.settingsExcludePatterns, cmd = m.settingsExcludePatterns.Update(msg)
 		cmds = append(cmds, cmd)
 	}

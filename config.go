@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -55,6 +56,13 @@ func LoadConfig() (*AppConfig, error) {
 		if os.IsNotExist(err) {
 			// Return default config with default excluded file patterns and default theme
 			return &AppConfig{
+				BaseBranch: "root",
+				Environments: []EnvConfig{
+					{Name: "develop", BranchName: "develop"},
+					{Name: "test", BranchName: "testing"},
+					{Name: "stage", BranchName: "stable"},
+					{Name: "prod", BranchName: "master"},
+				},
 				ExcludePatterns: ".gitlab-ci.yml\nsprite.gen.ts",
 				SelectedTheme:   "indigo",
 				Themes: []ThemeConfig{
@@ -165,4 +173,45 @@ func ClearReleaseState() error {
 		return nil // Already cleared
 	}
 	return err
+}
+
+// getBaseBranch loads config and returns the configured base branch with "root" fallback
+func getBaseBranch() string {
+	config, err := LoadConfig()
+	if err != nil || config.BaseBranch == "" {
+		return "root"
+	}
+	return config.BaseBranch
+}
+
+// defaultEnvironments returns the default environment configurations
+func defaultEnvironments() []EnvConfig {
+	return []EnvConfig{
+		{Name: "develop", BranchName: "develop"},
+		{Name: "test", BranchName: "testing"},
+		{Name: "stage", BranchName: "stable"},
+		{Name: "prod", BranchName: "master"},
+	}
+}
+
+// getEnvironments loads config and converts EnvConfig to runtime Environment slice
+func getEnvironments() []Environment {
+	config, err := LoadConfig()
+	if err != nil || len(config.Environments) == 0 {
+		// Fallback to defaults
+		return envsFromConfig(defaultEnvironments())
+	}
+	return envsFromConfig(config.Environments)
+}
+
+// envsFromConfig converts []EnvConfig to []Environment, uppercasing Name
+func envsFromConfig(configs []EnvConfig) []Environment {
+	envs := make([]Environment, len(configs))
+	for i, ec := range configs {
+		envs[i] = Environment{
+			Name:       strings.ToUpper(ec.Name),
+			BranchName: ec.BranchName,
+		}
+	}
+	return envs
 }

@@ -171,7 +171,7 @@ func (m model) renderSourceBranchInput(width int) string {
 	sb.WriteString("\n")
 
 	// Sub-prompt
-	subPrompt := "If the branch does not exist locally and remotely it will be created from root branch."
+	subPrompt := "If the branch does not exist locally and remotely it will be created from base branch."
 	sb.WriteString(lipgloss.NewStyle().Foreground(currentTheme.Notion).Render(subPrompt))
 	sb.WriteString("\n\n")
 
@@ -222,7 +222,8 @@ func (m model) renderSourceBranchStatus() string {
 	case "new":
 		return normalStyle.Render("That is new branch and will be ") +
 			createdStyle.Render("created") +
-			normalStyle.Render(" for release from root")
+			normalStyle.Render(" for release from ") +
+			existsStyle.Render(getBaseBranch())
 	default:
 		return ""
 	}
@@ -298,13 +299,14 @@ func (m *model) checkSourceBranchRemote(branchName string) tea.Cmd {
 			}
 		}
 
-		// Get the commit hash of root branch
-		rootCmd := exec.Command("git", "ls-remote", "--heads", "origin", "root")
+		// Get the commit hash of base branch
+		baseBranch := getBaseBranch()
+		rootCmd := exec.Command("git", "ls-remote", "--heads", "origin", baseBranch)
 		rootCmd.Dir = workDir
 		rootOutput, rootErr := rootCmd.CombinedOutput()
 		rootOutputStr := strings.TrimSpace(string(rootOutput))
 
-		if rootErr != nil || !strings.Contains(rootOutputStr, "refs/heads/root") {
+		if rootErr != nil || !strings.Contains(rootOutputStr, "refs/heads/"+baseBranch) {
 			// Can't determine root status, just say it exists (without root comparison)
 			return sourceBranchCheckMsg{
 				branchName: branchName,
@@ -314,10 +316,10 @@ func (m *model) checkSourceBranchRemote(branchName string) tea.Cmd {
 			}
 		}
 
-		// Extract root commit hash
+		// Extract base branch commit hash
 		rootCommit := ""
 		for _, line := range strings.Split(rootOutputStr, "\n") {
-			if strings.Contains(line, "refs/heads/root") {
+			if strings.Contains(line, "refs/heads/"+baseBranch) {
 				parts := strings.Fields(line)
 				if len(parts) > 0 {
 					rootCommit = parts[0]

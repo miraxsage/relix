@@ -14,8 +14,10 @@ import (
 var settingsTabs = []string{"Release", "Theme"}
 
 // Number of focusable elements per tab
-const settingsReleaseFieldCount = 2 // textarea, save button
-const settingsThemeFieldCount = 2   // theme list, save button
+// 0=base branch, 1=env1 name, 2=env1 branch, 3=env2 name, 4=env2 branch,
+// 5=env3 name, 6=env3 branch, 7=env4 name, 8=env4 branch, 9=textarea, 10=save button
+const settingsReleaseFieldCount = 11
+const settingsThemeFieldCount = 2 // theme list, save button
 
 // Invalid characters for file patterns (excluding glob special chars)
 var (
@@ -32,6 +34,11 @@ func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		loadThemeFromConfig()
 		(&m).updateTextareaTheme()
 		m.showSettings = false
+		m.settingsBaseBranch.Blur()
+		for i := 0; i < 4; i++ {
+			m.settingsEnvNames[i].Blur()
+			m.settingsEnvBranches[i].Blur()
+		}
 		m.settingsExcludePatterns.Blur()
 		m.settingsError = ""
 		m.settingsFocusIndex = 0
@@ -42,13 +49,18 @@ func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.settingsTab > 0 {
 			m.settingsTab--
 			m.settingsFocusIndex = 0
-			return m, m.settingsExcludePatterns.Focus()
+			return m.updateSettingsFocus()
 		}
 		return m, nil
 
 	case "L":
 		// Switch to next tab
 		if m.settingsTab < len(settingsTabs)-1 {
+			m.settingsBaseBranch.Blur()
+			for i := 0; i < 4; i++ {
+				m.settingsEnvNames[i].Blur()
+				m.settingsEnvBranches[i].Blur()
+			}
 			m.settingsExcludePatterns.Blur()
 			m.settingsTab++
 			m.settingsFocusIndex = 0
@@ -82,31 +94,79 @@ func (m model) updateSettingsRelease(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.settingsFocusIndex = (m.settingsFocusIndex - 1 + settingsReleaseFieldCount) % settingsReleaseFieldCount
 		return m.updateSettingsFocus()
 
+	case "down":
+		// Jump to same column in next row (skip textarea internals)
+		// 0=base → 1=env1 name; 1→3→5→7→9; 2→4→6→8→9; 9→10
+		if m.settingsFocusIndex == 9 {
+			// textarea: let down key pass through unless at save focus
+			break
+		}
+		switch {
+		case m.settingsFocusIndex == 0:
+			m.settingsFocusIndex = 1
+		case m.settingsFocusIndex == 7: // last env name → textarea
+			m.settingsFocusIndex = 9
+		case m.settingsFocusIndex == 8: // last env branch → textarea
+			m.settingsFocusIndex = 9
+		case m.settingsFocusIndex%2 == 1 && m.settingsFocusIndex < 8: // env name → next env name
+			m.settingsFocusIndex += 2
+		case m.settingsFocusIndex%2 == 0 && m.settingsFocusIndex < 9: // env branch → next env branch
+			m.settingsFocusIndex += 2
+		case m.settingsFocusIndex == 10:
+			return m, nil
+		}
+		return m.updateSettingsFocus()
+
+	case "up":
+		// Jump to same column in previous row
+		if m.settingsFocusIndex == 9 {
+			// textarea: let up key pass through
+			break
+		}
+		switch {
+		case m.settingsFocusIndex == 0:
+			return m, nil
+		case m.settingsFocusIndex == 1: // first env name → base branch
+			m.settingsFocusIndex = 0
+		case m.settingsFocusIndex == 2: // first env branch → base branch
+			m.settingsFocusIndex = 0
+		case m.settingsFocusIndex == 10: // save → textarea
+			m.settingsFocusIndex = 9
+		case m.settingsFocusIndex%2 == 1: // env name → prev env name
+			m.settingsFocusIndex -= 2
+		case m.settingsFocusIndex%2 == 0: // env branch → prev env branch
+			m.settingsFocusIndex -= 2
+		}
+		return m.updateSettingsFocus()
+
 	case "enter":
-		// If on save button, save all settings and close
-		if m.settingsFocusIndex == 1 {
-			m.settingsError = m.validatePatterns()
+		// If on save button (index 10), validate and save
+		if m.settingsFocusIndex == 10 {
+			m.settingsError = m.validateReleaseSettings()
 			if m.settingsError == "" {
 				m.saveAllSettings()
 				m.showSettings = false
 				m.settingsExcludePatterns.Blur()
+				m.settingsBaseBranch.Blur()
+				for i := 0; i < 4; i++ {
+					m.settingsEnvNames[i].Blur()
+					m.settingsEnvBranches[i].Blur()
+				}
 				m.settingsFocusIndex = 0
 			}
 			return m, nil
 		}
-		// Otherwise pass to textarea (for newline)
+		// If on textarea (index 9), pass through for newline
+		if m.settingsFocusIndex == 9 {
+			break
+		}
+		// On any text input, move to next field
+		m.settingsFocusIndex = (m.settingsFocusIndex + 1) % settingsReleaseFieldCount
+		return m.updateSettingsFocus()
 	}
 
-	// Pass key events to textarea if it's focused
-	if m.settingsFocusIndex == 0 {
-		var cmd tea.Cmd
-		m.settingsExcludePatterns, cmd = m.settingsExcludePatterns.Update(msg)
-		// Validate on each change
-		m.settingsError = m.validatePatterns()
-		return m, cmd
-	}
-
-	return m, nil
+	// Route key events to the focused input
+	return m.updateSettingsReleaseInput(msg)
 }
 
 // updateSettingsTheme handles key events on the Theme settings tab
@@ -209,12 +269,56 @@ func (m *model) updateTextareaTheme() {
 	}
 }
 
+// updateSettingsReleaseInput routes key events to the currently focused input
+func (m model) updateSettingsReleaseInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch m.settingsFocusIndex {
+	case 0: // Base branch
+		m.settingsBaseBranch, cmd = m.settingsBaseBranch.Update(msg)
+	case 1, 3, 5, 7: // Env names (indices 1,3,5,7)
+		idx := (m.settingsFocusIndex - 1) / 2
+		m.settingsEnvNames[idx], cmd = m.settingsEnvNames[idx].Update(msg)
+		// Force uppercase
+		upper := strings.ToUpper(m.settingsEnvNames[idx].Value())
+		if upper != m.settingsEnvNames[idx].Value() {
+			pos := m.settingsEnvNames[idx].Position()
+			m.settingsEnvNames[idx].SetValue(upper)
+			m.settingsEnvNames[idx].SetCursor(pos)
+		}
+	case 2, 4, 6, 8: // Env branches (indices 2,4,6,8)
+		idx := (m.settingsFocusIndex - 2) / 2
+		m.settingsEnvBranches[idx], cmd = m.settingsEnvBranches[idx].Update(msg)
+	case 9: // Textarea
+		m.settingsExcludePatterns, cmd = m.settingsExcludePatterns.Update(msg)
+		m.settingsError = m.validatePatterns()
+	}
+	return m, cmd
+}
+
 // updateSettingsFocus updates focus state based on settingsFocusIndex
 func (m model) updateSettingsFocus() (tea.Model, tea.Cmd) {
-	if m.settingsFocusIndex == 0 {
-		return m, m.settingsExcludePatterns.Focus()
+	// Blur everything first
+	m.settingsBaseBranch.Blur()
+	for i := 0; i < 4; i++ {
+		m.settingsEnvNames[i].Blur()
+		m.settingsEnvBranches[i].Blur()
 	}
 	m.settingsExcludePatterns.Blur()
+
+	// Focus the right input
+	switch m.settingsFocusIndex {
+	case 0:
+		return m, m.settingsBaseBranch.Focus()
+	case 1, 3, 5, 7:
+		idx := (m.settingsFocusIndex - 1) / 2
+		return m, m.settingsEnvNames[idx].Focus()
+	case 2, 4, 6, 8:
+		idx := (m.settingsFocusIndex - 2) / 2
+		return m, m.settingsEnvBranches[idx].Focus()
+	case 9:
+		return m, m.settingsExcludePatterns.Focus()
+	}
+	// Index 10 = save button, nothing to focus
 	return m, nil
 }
 
@@ -287,11 +391,51 @@ func itoa(n int) string {
 	return string(digits)
 }
 
+// validateReleaseSettings validates all Release tab fields
+func (m *model) validateReleaseSettings() string {
+	// Validate base branch
+	baseBranch := strings.TrimSpace(m.settingsBaseBranch.Value())
+	if baseBranch == "" {
+		return "Base branch cannot be empty"
+	}
+	if strings.Contains(baseBranch, " ") {
+		return "Base branch cannot contain spaces"
+	}
+
+	// Validate environment names and branches
+	for i := 0; i < 4; i++ {
+		name := strings.TrimSpace(m.settingsEnvNames[i].Value())
+		branch := strings.TrimSpace(m.settingsEnvBranches[i].Value())
+		if name == "" {
+			return fmt.Sprintf("Environment %d: name cannot be empty", i+1)
+		}
+		if branch == "" {
+			return fmt.Sprintf("Environment %d: branch cannot be empty", i+1)
+		}
+		if strings.Contains(branch, " ") {
+			return fmt.Sprintf("Environment %d: branch cannot contain spaces", i+1)
+		}
+	}
+
+	// Validate exclude patterns
+	return m.validatePatterns()
+}
+
 // saveAllSettings saves all settings across tabs to config file
 func (m *model) saveAllSettings() {
 	config, err := LoadConfig()
 	if err != nil {
 		config = &AppConfig{}
+	}
+	// Release tab: base branch
+	config.BaseBranch = strings.TrimSpace(m.settingsBaseBranch.Value())
+	// Release tab: environments
+	config.Environments = make([]EnvConfig, 4)
+	for i := 0; i < 4; i++ {
+		config.Environments[i] = EnvConfig{
+			Name:       strings.TrimSpace(m.settingsEnvNames[i].Value()),
+			BranchName: strings.TrimSpace(m.settingsEnvBranches[i].Value()),
+		}
 	}
 	// Release tab: exclude patterns
 	config.ExcludePatterns = m.settingsExcludePatterns.Value()
@@ -300,6 +444,9 @@ func (m *model) saveAllSettings() {
 		config.SelectedTheme = m.settingsThemes[m.settingsThemeIndex].Name
 	}
 	SaveConfig(config)
+
+	// Rebuild runtime environments from saved config
+	m.environments = getEnvironments()
 }
 
 // overlaySettings renders the settings modal as an overlay
@@ -389,29 +536,55 @@ func (m model) overlaySettings(background string) string {
 func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 	var b strings.Builder
 
-	// Setting title
-	b.WriteString(settingsLabelStyle.Render("Files to exclude from release"))
-	b.WriteString("\n")
-
-	// Description (same color as MR list item description - 244)
-	desc := "Enumerate file paths patterns to exclude from release, one per line. " +
-		"/**/ - any folders, * - any char sequence.\n" +
-		"e.g. garbage/ - any whole \"garbage\" folder, /garbage/ - whole \"garbage\" folder at project root, " +
-		"/node_modules/**/*.js, /file-*.ts, .gitlab-ci.yml"
-	b.WriteString(helpStyle.Render(desc))
-	b.WriteString("\n\n")
-
-	// Update textarea width to fit modal (accounting for padding only, border is outside Width)
-	contentWidth := modalWidth - 4 // 4 horizontal padding (border is added outside)
+	contentWidth := modalWidth - 4
 	if contentWidth < 30 {
 		contentWidth = 30
 	}
+
+	// --- Base branch ---
+	b.WriteString(settingsLabelStyle.Render("Base branch"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Branch from which release branches are created and merged back to."))
+	b.WriteString("\n\n")
+
+	m.settingsBaseBranch.Width = contentWidth - 2
+	b.WriteString(m.settingsBaseBranch.View())
+	b.WriteString("\n\n")
+
+	// --- Environment branches ---
+	b.WriteString(settingsLabelStyle.Render("Environment branches"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Customize environment names and their git branch mappings."))
+	b.WriteString("\n\n")
+
+	// Environment color dots by position
+	envColors := []lipgloss.Color{currentTheme.EnvDevelop, currentTheme.EnvTest, currentTheme.EnvStage, currentTheme.EnvProd}
+	arrowStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
+
+	for i := 0; i < 4; i++ {
+		dot := lipgloss.NewStyle().Foreground(envColors[i]).Render("●")
+		m.settingsEnvNames[i].Width = 7
+		m.settingsEnvBranches[i].Width = 20
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s",
+			dot,
+			m.settingsEnvNames[i].View(),
+			arrowStyle.Render("→"),
+			m.settingsEnvBranches[i].View(),
+		))
+		b.WriteString("\n")
+	}
+
+	// --- Exclude patterns ---
+	b.WriteString("\n")
+	b.WriteString(settingsLabelStyle.Render("Files to exclude from release"))
+	b.WriteString("\n")
+	desc := "Enumerate file paths patterns to exclude from release, one per line. " +
+		"/**/ - any folders, * - any char sequence."
+	b.WriteString(helpStyle.Render(desc))
+	b.WriteString("\n\n")
+
 	m.settingsExcludePatterns.SetWidth(contentWidth)
-
-	// Fixed textarea height
-	m.settingsExcludePatterns.SetHeight(10)
-
-	// Textarea
+	m.settingsExcludePatterns.SetHeight(6)
 	b.WriteString(m.settingsExcludePatterns.View())
 
 	// Error hint
@@ -424,15 +597,12 @@ func (m model) renderReleaseSettings(modalWidth, modalHeight int) string {
 	b.WriteString("\n\n")
 	buttonText := "Save and close"
 	var btnStyle lipgloss.Style
-	if m.settingsFocusIndex == 1 && m.settingsError == "" {
-		// Focused and no errors
+	if m.settingsFocusIndex == 10 && m.settingsError == "" {
 		btnStyle = buttonActiveStyle
 	} else {
-		// Normal or disabled (same unfocused style)
 		btnStyle = buttonStyle
 	}
 	button := btnStyle.Render(buttonText)
-	// Center the button
 	buttonWidth := lipgloss.Width(button)
 	padding := (contentWidth - buttonWidth) / 2
 	if padding > 0 {
