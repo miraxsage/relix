@@ -164,6 +164,7 @@ func NewModel() model {
 	ta.FocusedStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(currentTheme.Accent)
+	ta.BlurredStyle.CursorLine = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	ta.BlurredStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	ta.BlurredStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
@@ -747,6 +748,11 @@ func (m model) View() string {
 	// Overlay open options modal if open
 	if m.showOpenOptionsModal {
 		view = m.overlayOpenOptionsModal(view)
+	}
+
+	// Apply app background color if set
+	if currentTheme.HasBackground {
+		view = applyFullBackground(view, currentTheme.Background, m.width, m.height)
 	}
 
 	return view

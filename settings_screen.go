@@ -212,7 +212,10 @@ func (m model) updateSettingsTheme(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up", "k":
-		if m.settingsFocusIndex == 0 && m.settingsThemeIndex > 0 {
+		if m.settingsFocusIndex == 1 {
+			// Save button → back to theme list
+			m.settingsFocusIndex = 0
+		} else if m.settingsFocusIndex == 0 && m.settingsThemeIndex > 0 {
 			m.settingsThemeIndex--
 			if m.settingsThemeIndex < len(m.settingsThemes) {
 				applyTheme(m.settingsThemes[m.settingsThemeIndex])
@@ -226,6 +229,9 @@ func (m model) updateSettingsTheme(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsThemeIndex++
 			applyTheme(m.settingsThemes[m.settingsThemeIndex])
 			(&m).updateTextareaTheme()
+		} else if m.settingsFocusIndex == 0 && m.settingsThemeIndex >= len(m.settingsThemes)-1 {
+			// Past last theme → focus save button
+			m.settingsFocusIndex = 1
 		}
 		return m, nil
 
@@ -286,6 +292,7 @@ func (m *model) updateTextareaTheme() {
 	m.settingsExcludePatterns.FocusedStyle.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(currentTheme.Accent)
+	m.settingsExcludePatterns.BlurredStyle.CursorLine = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	m.settingsExcludePatterns.BlurredStyle.Text = lipgloss.NewStyle().Foreground(currentTheme.Foreground)
 	m.settingsExcludePatterns.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(currentTheme.Notion)
 	m.settingsExcludePatterns.BlurredStyle.LineNumber = lipgloss.NewStyle().Foreground(currentTheme.Notion)
@@ -316,6 +323,28 @@ func (m *model) updateTextareaTheme() {
 
 // updateSettingsReleaseInput routes key events to the currently focused input
 func (m model) updateSettingsReleaseInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Jump between env name ↔ env branch on the same row via left/right at boundaries
+	if msg.String() == "right" {
+		if m.settingsFocusIndex%2 == 1 && m.settingsFocusIndex >= 1 && m.settingsFocusIndex <= 7 {
+			idx := (m.settingsFocusIndex - 1) / 2
+			if m.settingsEnvNames[idx].Position() >= len(m.settingsEnvNames[idx].Value()) {
+				m.settingsFocusIndex++
+				m.settingsEnvBranches[idx].SetCursor(0)
+				return m.updateSettingsFocus()
+			}
+		}
+	}
+	if msg.String() == "left" {
+		if m.settingsFocusIndex%2 == 0 && m.settingsFocusIndex >= 2 && m.settingsFocusIndex <= 8 {
+			idx := (m.settingsFocusIndex - 2) / 2
+			if m.settingsEnvBranches[idx].Position() == 0 {
+				m.settingsFocusIndex--
+				m.settingsEnvNames[idx].SetCursor(len(m.settingsEnvNames[idx].Value()))
+				return m.updateSettingsFocus()
+			}
+		}
+	}
+
 	var cmd tea.Cmd
 	switch m.settingsFocusIndex {
 	case 0: // Base branch
@@ -710,7 +739,7 @@ func (m model) renderReleaseSettings() releaseSettingsResult {
 	write(settingsLabelStyle.Render("Base branch"))
 	write("\n")
 	write(helpStyle.Render("Branch from which release branches are created and merged back to."))
-	write("\n\n")
+	write("\n")
 
 	fl[0] = [2]int{line, line} // base branch input
 	write(m.settingsBaseBranch.View())
@@ -720,7 +749,7 @@ func (m model) renderReleaseSettings() releaseSettingsResult {
 	write(settingsLabelStyle.Render("Environment branches"))
 	write("\n")
 	write(helpStyle.Render("Customize environment names and their git branch mappings."))
-	write("\n\n")
+	write("\n")
 
 	envColors := []lipgloss.Color{currentTheme.EnvDevelop, currentTheme.EnvTest, currentTheme.EnvStage, currentTheme.EnvProd}
 	arrowStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
@@ -747,7 +776,7 @@ func (m model) renderReleaseSettings() releaseSettingsResult {
 	desc := "Enumerate file paths patterns to exclude from release, one per line. " +
 		"/**/ - any folders, * - any char sequence."
 	write(helpStyle.Render(desc))
-	write("\n\n")
+	write("\n")
 
 	textareaStart := line
 	m.settingsExcludePatterns.SetWidth(contentWidth)
@@ -762,7 +791,7 @@ func (m model) renderReleaseSettings() releaseSettingsResult {
 	desc2 := "Define regex for pipeline job names to observe for completion. Leave empty to track all jobs. " +
 		"Uses Go regexp syntax: (?i) for case-insensitive, (?m) for multiline, etc."
 	write(helpStyle.Width(contentWidth).Render(desc2))
-	write("\n\n")
+	write("\n")
 
 	fl[10] = [2]int{line, line} // pipeline regex input
 	write(m.settingsPipelineRegex.View())
@@ -858,15 +887,29 @@ func (m model) renderThemeSettings() string {
 		detailStyle := lipgloss.NewStyle().Foreground(currentTheme.Notion)
 		renderColor := func(label string, value lipgloss.Color) string {
 			hex := string(value)
-			return detailStyle.Render(label+": ") + lipgloss.NewStyle().Foreground(value).Render(hex)
+			colorStyle := lipgloss.NewStyle().Foreground(value)
+			if value != currentTheme.Muted {
+				colorStyle = colorStyle.Background(currentTheme.Muted)
+			}
+			return detailStyle.Render(label+": ") + colorStyle.Render(" "+hex+" ")
+		}
+
+		var bgEntry string
+		if resolved.HasBackground {
+			bgEntry = renderColor("background", resolved.Background)
+		} else {
+			bgEntry = detailStyle.Render("background: ") + helpStyle.Render("transparent")
 		}
 
 		colorEntries = []string{
+			bgEntry,
 			renderColor("accent", resolved.Accent),
 			renderColor("accent_fg", resolved.AccentForeground),
 			renderColor("foreground", resolved.Foreground),
 			renderColor("notion", resolved.Notion),
 			renderColor("notion_fg", resolved.NotionForeground),
+			renderColor("muted", resolved.Muted),
+			renderColor("muted_fg", resolved.MutedForeground),
 			renderColor("success", resolved.Success),
 			renderColor("success_fg", resolved.SuccessForeground),
 			renderColor("warning", resolved.Warning),
