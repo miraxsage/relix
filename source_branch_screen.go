@@ -76,16 +76,13 @@ func (m model) updateSourceBranch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sourceBranchError = "Branch name must contain version: " + m.versionInput.Value()
 			return m, nil
 		}
-		// Branch name is valid - proceed to root merge screen
+		// Branch name is valid - proceed to env merge screen
 		m.sourceBranchError = ""
-		m.screen = screenRootMerge
-		// Preserve previous selection: 0 = Yes (rootMergeSelection=true), 1 = No (rootMergeSelection=false)
-		if m.rootMergeSelection {
-			m.rootMergeButtonIndex = 0
-		} else {
-			m.rootMergeButtonIndex = 1
-		}
-		return m, nil
+		m.screen = screenEnvMerge
+		// Reset commit count so it recalculates if env/version/branch changed
+		m.envMergeCommitCount = 0
+		m.envMergeCountLoading = true
+		return m, tea.Batch(m.spinner.Tick, m.calculateEnvMergeCommitCount())
 	}
 
 	// Handle text input updates

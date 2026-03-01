@@ -75,6 +75,7 @@ func SaveReleaseHistory(state *ReleaseState, status string, terminalOutput []str
 		SourceBranch:      state.SourceBranch,
 		EnvBranch:         state.Environment.BranchName,
 		RootMerge:         state.RootMerge,
+		EnvMergeMode:      state.EnvMergeMode,
 		CreatedMRURL:      state.CreatedMRURL,
 		TerminalOutput:    terminalOutput,
 		ThemeANSIMap:      buildThemeANSIMap(currentTheme),

@@ -19,6 +19,7 @@ const (
 	screenEnvSelect
 	screenVersion
 	screenSourceBranch
+	screenEnvMerge
 	screenRootMerge
 	screenConfirm
 	screenRelease
@@ -194,6 +195,7 @@ type ReleaseState struct {
 	SourceBranch         string      `json:"source_branch"`          // Source branch for accumulating MRs (e.g. release/rpb_1.0.0_root)
 	SourceBranchIsRemote bool        `json:"source_branch_is_remote"` // Whether source branch exists on remote (determines checkout strategy)
 	RootMerge            bool        `json:"root_merge"`             // Whether to merge release to root and root to develop
+	EnvMergeMode         string      `json:"env_merge_mode"`         // "squash" (default) or "regular" - how to merge root to env
 	ProjectID            int         `json:"project_id"`
 
 	// Progress tracking
@@ -281,6 +283,12 @@ type sourceBranchCheckMsg struct {
 	err          error  // Error if check failed
 }
 
+// envMergeCommitCountMsg is sent when the env merge commit count calculation completes
+type envMergeCommitCountMsg struct {
+	count int
+	err   error
+}
+
 // PipelineObserverStage represents the current stage of pipeline observation
 type PipelineObserverStage int
 
@@ -365,6 +373,7 @@ type ReleaseHistoryEntry struct {
 	SourceBranch   string        `json:"source_branch"`
 	EnvBranch      string        `json:"env_branch"`
 	RootMerge      bool          `json:"root_merge"`
+	EnvMergeMode   string        `json:"env_merge_mode,omitempty"` // "squash" or "regular"
 	CreatedMRURL   string        `json:"created_mr_url"`
 	TerminalOutput []string      `json:"terminal_output"`
 	ThemeANSIMap   *ThemeANSIMap `json:"theme_ansi_map,omitempty"`

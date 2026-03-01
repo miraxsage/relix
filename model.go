@@ -58,6 +58,12 @@ type model struct {
 	sourceBranchLastCheckTime time.Time // For throttling checks
 	sourceBranchCheckedName   string    // Branch name that was last checked
 
+	// Env merge screen
+	envMergeOptionIndex  int  // 0 = squash (default), 1 = regular
+	envMergeSelection    int  // confirmed choice: 0 = squash, 1 = regular
+	envMergeCommitCount  int  // calculated commit count for regular merge display
+	envMergeCountLoading bool // true while calculating commit count
+
 	// Root merge screen
 	rootMergeButtonIndex int  // 0 = Yes, 1 = No
 	rootMergeSelection   bool // true = merge, false = skip
@@ -232,6 +238,8 @@ func NewModel() model {
 		environments:            getEnvironments(),
 		selectedMRs:             make(map[int]bool),
 		historyMRDetailsMap:     make(map[int]*MergeRequestDetails),
+		envMergeOptionIndex:     0, // Default to squash
+		envMergeSelection:       0, // Default to squash
 		rootMergeSelection:      true, // Default to "Yes, merge it"
 		rootMergeButtonIndex:    0,    // Default button is "Yes, merge it"
 	}
@@ -321,6 +329,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateVersion(msg)
 		case screenSourceBranch:
 			return m.updateSourceBranch(msg)
+		case screenEnvMerge:
+			return m.updateEnvMerge(msg)
 		case screenRootMerge:
 			return m.updateRootMerge(msg)
 		case screenConfirm:
@@ -401,7 +411,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case spinner.TickMsg:
-		if m.loading || m.loadingProjects || m.loadingMRs || m.loadingHistory || m.loadingHistoryMRs || m.releaseRunning || m.sourceBranchRemoteStatus == "checking" || (m.pipelineObserving && m.pipelineStatus != nil && m.pipelineStatus.Stage != PipelineStageCompleted && m.pipelineStatus.Stage != PipelineStageFailed) {
+		if m.loading || m.loadingProjects || m.loadingMRs || m.loadingHistory || m.loadingHistoryMRs || m.releaseRunning || m.sourceBranchRemoteStatus == "checking" || m.envMergeCountLoading || (m.pipelineObserving && m.pipelineStatus != nil && m.pipelineStatus.Stage != PipelineStageCompleted && m.pipelineStatus.Stage != PipelineStageFailed) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -578,6 +588,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case envMergeCommitCountMsg:
+		m.envMergeCountLoading = false
+		if msg.err == nil {
+			m.envMergeCommitCount = msg.count
+		}
+		return m, nil
+
 	case pipelineTickMsg:
 		if m.pipelineObserving {
 			return m, m.checkPipelineStatus()
@@ -706,6 +723,8 @@ func (m model) View() string {
 		view = m.viewVersion()
 	case screenSourceBranch:
 		view = m.viewSourceBranch()
+	case screenEnvMerge:
+		view = m.viewEnvMerge()
 	case screenRootMerge:
 		view = m.viewRootMerge()
 	case screenConfirm:

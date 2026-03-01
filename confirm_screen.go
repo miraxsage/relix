@@ -71,8 +71,8 @@ func (m model) viewConfirm() string {
 	// Total rendered height for sidebar/content (content height + 2 for border)
 	totalHeight := contentHeight + 2
 
-	// Build five sidebar (pass total rendered height)
-	sidebar := m.renderFiveSidebar(sidebarW, totalHeight)
+	// Build six sidebar (pass total rendered height)
+	sidebar := m.renderSixSidebar(sidebarW, totalHeight)
 
 	// Build content - show preparing screen when checking, otherwise show confirmation
 	var contentContent string
@@ -174,15 +174,12 @@ func (m model) renderTripleSidebar(width int, availableHeight int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar)
 }
 
-// renderFiveSidebar renders all 5 sidebars: MRs, Environment, Version, Source branch, and Root merge
-func (m model) renderFiveSidebar(width int, availableHeight int) string {
-	// Collect branch names from selected MRs or release state
+// renderSixSidebar renders all 6 sidebars: MRs, Environment, Version, Source branch, Env merge, and Root merge
+func (m model) renderSixSidebar(width int, availableHeight int) string {
 	var branches []string
 	if m.releaseState != nil && len(m.releaseState.MRBranches) > 0 {
-		// Use branches from release state (for resume scenario)
 		branches = m.releaseState.MRBranches
 	} else {
-		// Get branches from list
 		items := m.list.Items()
 		for _, item := range items {
 			if mr, ok := item.(mrListItem); ok {
@@ -193,69 +190,25 @@ func (m model) renderFiveSidebar(width int, availableHeight int) string {
 		}
 	}
 
-	// Each bordered box adds 2 lines for top/bottom border
-	// We have 5 boxes, so total border overhead is 10 lines
-	totalContentHeight := availableHeight - 10
+	totalContentHeight := availableHeight - 12
 
-	// Minimum heights for sidebars
-	minEnvContentHeight := 4          // title + blank + env + padding
-	minVersionContentHeight := 4      // title + blank + version + padding
-	minSourceBranchContentHeight := 4 // title + blank + branch + padding
-	minRootMergeContentHeight := 4    // title + blank + status + padding
-	mrsHeaderLines := 3               // title line + blank line + some spacing
+	otherCount := 5 // env, version, source branch, env merge, root merge
+	otherHeight := totalContentHeight / (otherCount + 1)
+	mrsContentHeight := totalContentHeight - otherCount*otherHeight
+	envContentHeight := otherHeight
+	versionContentHeight := otherHeight
+	sourceBranchContentHeight := otherHeight
+	envMergeContentHeight := otherHeight
+	rootMergeContentHeight := otherHeight
 
-	// Calculate ideal MRs content height
-	idealMrsContentHeight := mrsHeaderLines + len(branches)
-
-	// Target: each sidebar gets 1/5 of content height
-	fifthContentHeight := totalContentHeight / 5
-
-	// Start with equal distribution
-	mrsContentHeight := fifthContentHeight
-	envContentHeight := fifthContentHeight
-	versionContentHeight := fifthContentHeight
-	sourceBranchContentHeight := fifthContentHeight
-	rootMergeContentHeight := totalContentHeight - mrsContentHeight - envContentHeight - versionContentHeight - sourceBranchContentHeight
-
-	// If branches don't fit in 1/5, try to expand MRs sidebar
-	if idealMrsContentHeight > fifthContentHeight {
-		// Calculate max MRs content height (leaving minimum for other sidebars)
-		maxMrsContentHeight := totalContentHeight - minEnvContentHeight - minVersionContentHeight - minSourceBranchContentHeight - minRootMergeContentHeight
-		if idealMrsContentHeight <= maxMrsContentHeight {
-			// All branches fit if we shrink other sidebars to minimum
-			mrsContentHeight = idealMrsContentHeight
-			// Distribute remaining space equally between other sidebars
-			remaining := totalContentHeight - mrsContentHeight
-			envContentHeight = remaining / 4
-			versionContentHeight = remaining / 4
-			sourceBranchContentHeight = remaining / 4
-			rootMergeContentHeight = remaining - envContentHeight - versionContentHeight - sourceBranchContentHeight
-		} else {
-			// Even with minimum sidebars, not all branches fit
-			mrsContentHeight = maxMrsContentHeight
-			envContentHeight = minEnvContentHeight
-			versionContentHeight = minVersionContentHeight
-			sourceBranchContentHeight = minSourceBranchContentHeight
-			rootMergeContentHeight = minRootMergeContentHeight
-		}
-	}
-
-	// Render MRs sidebar section (pass content height, not total height)
 	mrsSidebar := m.renderMRsSidebarSection(width, mrsContentHeight, branches)
-
-	// Render Environment sidebar section
 	envSidebar := m.renderEnvSidebarSection(width, envContentHeight)
-
-	// Render Version sidebar section
 	versionSidebar := m.renderVersionSidebarSection(width, versionContentHeight)
-
-	// Render Source branch sidebar section
 	sourceBranchSidebar := m.renderSourceBranchSidebarSection(width, sourceBranchContentHeight)
-
-	// Render Root merge sidebar section
+	envMergeSidebar := m.renderEnvMergeSidebarSection(width, envMergeContentHeight)
 	rootMergeSidebar := m.renderRootMergeSidebarSection(width, rootMergeContentHeight)
 
-	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar, sourceBranchSidebar, rootMergeSidebar)
+	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar, sourceBranchSidebar, envMergeSidebar, rootMergeSidebar)
 }
 
 // renderVersionSidebarSection renders the Version sidebar block with border
@@ -381,23 +334,43 @@ func (m model) renderConfirmMarkdown(width int) string {
 	versionNB := strings.ReplaceAll(version, "-", nbHyphen)
 	envBranchNB := strings.ReplaceAll(envBranch, "-", nbHyphen)
 
-	// Build tag name for step 9
+	// Build tag name
 	tagName := fmt.Sprintf("%s-%s-v%d", strings.ToLower(envName), version, vNumber)
 
-	// Build step 8-9 based on root merge selection
+	// Build step 4-5 and subsequent numbering based on env merge mode
+	step4And5 := ""
+	pushStepNum := 6
+	mrStepNum := 7
+	if m.envMergeSelection == 1 {
+		// Regular merge mode
+		step4And5 = fmt.Sprintf(`4. Merge **%s** to **release/rpb-%s-%s** via regular git merge (may require ~~conflict resolution~~)`,
+			sourceBranch, version, envBranch)
+		pushStepNum = 5
+		mrStepNum = 6
+	} else {
+		// Squash merge mode (default)
+		step4And5 = fmt.Sprintf(`4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number **v%d** from previous within version **%s**
+
+5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove)`,
+			sourceBranch, version, envBranch, vNumber, version)
+	}
+
+	// Build step 8-9 based on root merge selection (with dynamic numbering)
 	step8And9 := ""
 	if m.rootMergeSelection {
-		step8And9 = fmt.Sprintf(`8. Open new environment MR in browser for manual approval and pipeline execution
+		step8And9 = fmt.Sprintf(`%d. Open new environment MR in browser for manual approval and pipeline execution
 
-9. ~~Confirm~~ and push **%s** to remote
+%d. ~~Confirm~~ and push **%s** to remote
 
-10. [ Merge ]()**%s** to **root**, tag **root** as **%s** and push it to remote
+%d. [ Merge ]()**%s** to **root**, tag **root** as **%s** and push it to remote
 
-11. [ Merge ]()**root** to **develop** and push it to remote`, sourceBranch, sourceBranch, tagName)
+%d. [ Merge ]()**root** to **develop** and push it to remote`,
+			mrStepNum+1, mrStepNum+2, sourceBranch, mrStepNum+3, sourceBranch, tagName, mrStepNum+4)
 	} else {
-		step8And9 = fmt.Sprintf(`8. Open new environment MR in browser for manual approval and pipeline execution
+		step8And9 = fmt.Sprintf(`%d. Open new environment MR in browser for manual approval and pipeline execution
 
-9. ~~Confirm~~ and tag **%s** as **%s**, then push it to remote`, sourceBranch, tagName)
+%d. ~~Confirm~~ and tag **%s** as **%s**, then push it to remote`,
+			mrStepNum+1, mrStepNum+2, sourceBranch, tagName)
 	}
 
 	markdown := fmt.Sprintf(`[ We are ready ]()to release **%s v%d** of selected MRs to **%s** environment!
@@ -410,13 +383,11 @@ This release will go through the following steps:
 
 3. Create environment release branch **release/rpb-%s-%s** from current **%s**
 
-4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number **v%d** from previous within version **%s**
+%s
 
-5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove)
+%d. ~~Confirm~~ and push **release/rpb-%s-%s** to remote
 
-6. ~~Confirm~~ and push **release/rpb-%s-%s** to remote
-
-7. Create new merge request from **release/rpb-%s-%s** to **%s**
+%d. Create new merge request from **release/rpb-%s-%s** to **%s**
 
 %s
 
@@ -427,9 +398,9 @@ If you agree, press enter and release it.
 		version, vNumber, envName,
 		step1Text,
 		version, envBranch, envBranch,
-		sourceBranch, version, envBranch, vNumber, version,
-		version, envBranch,
-		version, envBranch, envBranch,
+		step4And5,
+		pushStepNum, version, envBranch,
+		mrStepNum, version, envBranch, envBranch,
 		step8And9,
 		sourceBranchNB, versionNB, envBranchNB,
 	)

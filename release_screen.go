@@ -74,10 +74,15 @@ func calculateReleaseTotalSteps(state *ReleaseState) int {
 	total += 1                     // CheckoutRoot
 	total += len(state.MRBranches) // MergeBranches (one per MR)
 	total += 1                     // CheckoutEnv
-	total += 3                     // CopyContent (checkout env-release + rm all + checkout from root)
-	total += 1                     // Commit
-	total += 1                     // Push env branch
-	total += 1                     // Create MR (API)
+	if state.EnvMergeMode == "regular" {
+		total += 1 // CopyContent: just git merge
+		// No Commit step — merge creates commit automatically
+	} else {
+		total += 3 // CopyContent (checkout env-release + rm all + checkout from root)
+		total += 1 // Commit
+	}
+	total += 1 // Push env branch
+	total += 1 // Create MR (API)
 	if state.RootMerge {
 		total += 5 // push release-root, merge to root, tag, push root+tags, merge develop+push
 	} else {
@@ -443,8 +448,8 @@ func (m model) viewRelease() string {
 	contentHeight := m.height - 4
 	totalHeight := contentHeight + 2
 
-	// Build five sidebar (same as confirm screen)
-	sidebar := m.renderFiveSidebar(sidebarW, totalHeight)
+	// Build six sidebar (same as confirm screen)
+	sidebar := m.renderSixSidebar(sidebarW, totalHeight)
 
 	// Build content
 	contentContent := m.renderReleaseContent(contentWidth-2, contentHeight)
@@ -573,13 +578,19 @@ func (m model) renderReleaseStatus(width int) string {
 		var errorType string
 		if DetectMergeConflict(state.WorkDir) {
 			// Merge conflict
-			branchName := ""
-			if state.CurrentMRIndex < len(state.MRBranches) {
-				branchName = state.MRBranches[state.CurrentMRIndex]
+			if state.CurrentStep == ReleaseStepCopyContent && state.EnvMergeMode == "regular" {
+				errorType = fmt.Sprintf("%s regular merge %s.",
+					releaseOrangeStyle.Render(state.SourceBranch),
+					releaseConflictStyle.Render("CONFLICT"))
+			} else {
+				branchName := ""
+				if state.CurrentMRIndex < len(state.MRBranches) {
+					branchName = state.MRBranches[state.CurrentMRIndex]
+				}
+				errorType = fmt.Sprintf("%s merge %s.",
+					releaseOrangeStyle.Render(branchName),
+					releaseConflictStyle.Render("CONFLICT"))
 			}
-			errorType = fmt.Sprintf("%s merge %s.",
-				releaseOrangeStyle.Render(branchName),
-				releaseConflictStyle.Render("CONFLICT"))
 			status = fmt.Sprintf("Release is %s on %s because of\n%s\nResolve merge issues and press %s",
 				releaseSuspendedStyle.Render("SUSPENDED"),
 				releasePercentStyle.Render(progressText),
@@ -920,6 +931,11 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 	// Determine if source branch exists remotely based on the check status
 	sourceBranchIsRemote := m.sourceBranchRemoteStatus == "exists-same" || m.sourceBranchRemoteStatus == "exists-diff" || m.sourceBranchRemoteStatus == "exists"
 
+	envMergeMode := "squash"
+	if m.envMergeSelection == 1 {
+		envMergeMode = "regular"
+	}
+
 	// Create release state
 	state := &ReleaseState{
 		SelectedMRIIDs:       mrIIDs,
@@ -932,6 +948,7 @@ func (m *model) startRelease() (tea.Model, tea.Cmd) {
 		SourceBranch:         m.sourceBranchInput.Value(),
 		SourceBranchIsRemote: sourceBranchIsRemote,
 		RootMerge:            m.rootMergeSelection,
+		EnvMergeMode:         envMergeMode,
 		ProjectID:            m.selectedProject.ID,
 		CurrentStep:          ReleaseStepGitFetch,
 		LastSuccessStep:      ReleaseStepIdle,
@@ -1038,46 +1055,71 @@ func (m *model) executeReleaseStep(step ReleaseStep) tea.Cmd {
 			output, err = executor.RunCommands(cmds.Step3CheckoutEnv())
 
 		case ReleaseStepCopyContent:
-			// First, ensure we're on the env-release-branch (needed when retrying after commit failure)
 			envReleaseBranch := cmds.EnvReleaseBranch()
-			checkoutOutput, checkoutErr := executor.RunCommand(fmt.Sprintf("git checkout %s", envReleaseBranch))
-			if checkoutErr != nil {
-				return releaseStepCompleteMsg{step: step, err: checkoutErr, output: checkoutOutput}
-			}
-			m.program.Send(releaseSubStepDoneMsg{})
 
-			// Step 4.1: Remove all files
-			output1, err1 := executor.RunCommand(cmds.Step4RemoveAll())
-			if err1 != nil {
-				return releaseStepCompleteMsg{step: step, err: err1, output: checkoutOutput + output1}
-			}
-			m.program.Send(releaseSubStepDoneMsg{})
+			if state.EnvMergeMode == "regular" {
+				// Regular merge mode: merge source branch into env release branch
+				if DetectMergeConflict(workDir) {
+					// Continue a previously conflicted merge
+					command = "GIT_EDITOR=true git merge --continue"
+					output, err = executor.RunCommand(command)
+				} else {
+					// Ensure we're on the env release branch
+					checkoutOutput, checkoutErr := executor.RunCommand(fmt.Sprintf("git checkout %s", envReleaseBranch))
+					if checkoutErr != nil {
+						return releaseStepCompleteMsg{step: step, err: checkoutErr, output: checkoutOutput}
+					}
+					// Merge source branch
+					mergeCmd := fmt.Sprintf("GIT_EDITOR=true git merge --no-edit %s", state.SourceBranch)
+					mergeOutput, mergeErr := executor.RunCommand(mergeCmd)
+					output = checkoutOutput + mergeOutput
+					err = mergeErr
+				}
+				if err == nil {
+					m.program.Send(releaseSubStepDoneMsg{})
+				}
+			} else {
+				// Squash mode (default): existing content copy behavior
+				// First, ensure we're on the env-release-branch (needed when retrying after commit failure)
+				checkoutOutput, checkoutErr := executor.RunCommand(fmt.Sprintf("git checkout %s", envReleaseBranch))
+				if checkoutErr != nil {
+					return releaseStepCompleteMsg{step: step, err: checkoutErr, output: checkoutOutput}
+				}
+				m.program.Send(releaseSubStepDoneMsg{})
 
-			// Step 4.2: Checkout from root
-			output2, err2 := executor.RunCommand(cmds.Step4CheckoutFromRoot())
-			if err2 != nil {
-				return releaseStepCompleteMsg{step: step, err: err2, output: checkoutOutput + output1 + output2}
-			}
+				// Step 4.1: Remove all files
+				output1, err1 := executor.RunCommand(cmds.Step4RemoveAll())
+				if err1 != nil {
+					return releaseStepCompleteMsg{step: step, err: err1, output: checkoutOutput + output1}
+				}
+				m.program.Send(releaseSubStepDoneMsg{})
 
-			// Step 4.3: Exclude files - restore from env branch or remove if not exists
-			excluded, _ := GetExcludedFiles(workDir, patterns)
-			var output3 string
-			if len(excluded) > 0 {
-				for _, file := range excluded {
-					output3 += fmt.Sprintf("Excluding: %s\n", releaseOrangeStyle.Render(file))
-					// Try to restore file from environment branch (keeps it unchanged)
-					restoreCmd := fmt.Sprintf("git checkout origin/%s -- %q 2>/dev/null", state.Environment.BranchName, file)
-					_, restoreErr := executor.RunCommand(restoreCmd)
-					if restoreErr != nil {
-						// File doesn't exist in env branch - remove it completely
-						executor.RunCommand(fmt.Sprintf("rm -rf %q", file))
-						executor.RunCommand(fmt.Sprintf("git rm -rf --cached %q 2>/dev/null || true", file))
+				// Step 4.2: Checkout from root
+				output2, err2 := executor.RunCommand(cmds.Step4CheckoutFromRoot())
+				if err2 != nil {
+					return releaseStepCompleteMsg{step: step, err: err2, output: checkoutOutput + output1 + output2}
+				}
+
+				// Step 4.3: Exclude files - restore from env branch or remove if not exists
+				excluded, _ := GetExcludedFiles(workDir, patterns)
+				var output3 string
+				if len(excluded) > 0 {
+					for _, file := range excluded {
+						output3 += fmt.Sprintf("Excluding: %s\n", releaseOrangeStyle.Render(file))
+						// Try to restore file from environment branch (keeps it unchanged)
+						restoreCmd := fmt.Sprintf("git checkout origin/%s -- %q 2>/dev/null", state.Environment.BranchName, file)
+						_, restoreErr := executor.RunCommand(restoreCmd)
+						if restoreErr != nil {
+							// File doesn't exist in env branch - remove it completely
+							executor.RunCommand(fmt.Sprintf("rm -rf %q", file))
+							executor.RunCommand(fmt.Sprintf("git rm -rf --cached %q 2>/dev/null || true", file))
+						}
 					}
 				}
-			}
-			m.program.Send(releaseSubStepDoneMsg{})
+				m.program.Send(releaseSubStepDoneMsg{})
 
-			output = checkoutOutput + output1 + output2 + output3
+				output = checkoutOutput + output1 + output2 + output3
+			}
 
 		case ReleaseStepCommit:
 			// Get next v-number and create commit
@@ -1323,8 +1365,14 @@ func (m *model) handleReleaseStepComplete(msg releaseStepCompleteMsg) (tea.Model
 
 	case ReleaseStepCopyContent:
 		// substeps already incremented via releaseSubStepDoneMsg
-		nextStep = ReleaseStepCommit
-		state.CurrentStep = nextStep
+		if state.EnvMergeMode == "regular" {
+			// Regular merge creates its own commit, skip commit step
+			nextStep = ReleaseStepWaitForMR
+			state.CurrentStep = nextStep
+		} else {
+			nextStep = ReleaseStepCommit
+			state.CurrentStep = nextStep
+		}
 
 	case ReleaseStepCommit:
 		state.CompletedSubSteps++

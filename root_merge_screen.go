@@ -11,8 +11,8 @@ import (
 func (m model) updateRootMerge(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+q":
-		// Go back to source branch input
-		m.screen = screenSourceBranch
+		// Go back to env merge screen
+		m.screen = screenEnvMerge
 		return m, nil
 	case "left", "h":
 		if m.rootMergeButtonIndex > 0 {
@@ -66,8 +66,8 @@ func (m model) viewRootMerge() string {
 	// Total rendered height for sidebar/content (content height + 2 for border)
 	totalHeight := contentHeight + 2
 
-	// Build quad sidebar (4 sections: MRs, Environment, Version, Source branch)
-	sidebar := m.renderQuadSidebar(sidebarW, totalHeight)
+	// Build quint sidebar (5 sections: MRs, Environment, Version, Source branch, Env merge)
+	sidebar := m.renderQuintSidebar(sidebarW, totalHeight)
 
 	// Build content - root merge selection
 	contentContent := m.renderRootMergeContent(contentWidth - 4)
@@ -93,7 +93,7 @@ func (m model) renderRootMergeContent(width int) string {
 	var sb strings.Builder
 
 	// Step title
-	sb.WriteString(envTitleStepStyle.Render("[5]") + envTitleStyle.Render(" Root merge "))
+	sb.WriteString(envTitleStepStyle.Render("[6]") + envTitleStyle.Render(" Root merge "))
 	sb.WriteString("\n\n")
 
 	// Prompt
@@ -147,44 +147,13 @@ func (m model) renderQuadSidebar(width int, availableHeight int) string {
 	// We have 4 boxes, so total border overhead is 8 lines
 	totalContentHeight := availableHeight - 8
 
-	// Minimum heights for sidebars
-	minEnvContentHeight := 4          // title + blank + env + padding
-	minVersionContentHeight := 4      // title + blank + version + padding
-	minSourceBranchContentHeight := 4 // title + blank + branch + padding
-	mrsHeaderLines := 3               // title line + blank line + some spacing
-
-	// Calculate ideal MRs content height
-	idealMrsContentHeight := mrsHeaderLines + len(branches)
-
-	// Target: each sidebar gets 1/4 of content height
-	quarterContentHeight := totalContentHeight / 4
-
-	// Start with equal distribution
-	mrsContentHeight := quarterContentHeight
-	envContentHeight := quarterContentHeight
-	versionContentHeight := quarterContentHeight
-	sourceBranchContentHeight := totalContentHeight - mrsContentHeight - envContentHeight - versionContentHeight
-
-	// If branches don't fit in 1/4, try to expand MRs sidebar
-	if idealMrsContentHeight > quarterContentHeight {
-		// Calculate max MRs content height (leaving minimum for other sidebars)
-		maxMrsContentHeight := totalContentHeight - minEnvContentHeight - minVersionContentHeight - minSourceBranchContentHeight
-		if idealMrsContentHeight <= maxMrsContentHeight {
-			// All branches fit if we shrink other sidebars to minimum
-			mrsContentHeight = idealMrsContentHeight
-			// Distribute remaining space equally between other sidebars
-			remaining := totalContentHeight - mrsContentHeight
-			envContentHeight = remaining / 3
-			versionContentHeight = remaining / 3
-			sourceBranchContentHeight = remaining - envContentHeight - versionContentHeight
-		} else {
-			// Even with minimum sidebars, not all branches fit
-			mrsContentHeight = maxMrsContentHeight
-			envContentHeight = minEnvContentHeight
-			versionContentHeight = minVersionContentHeight
-			sourceBranchContentHeight = minSourceBranchContentHeight
-		}
-	}
+	otherCount := 3 // env, version, source branch
+	// Give remaining blocks equal height, MRs gets the rest
+	otherHeight := totalContentHeight / (otherCount + 1)
+	mrsContentHeight := totalContentHeight - otherCount*otherHeight
+	envContentHeight := otherHeight
+	versionContentHeight := otherHeight
+	sourceBranchContentHeight := otherHeight
 
 	// Render MRs sidebar section
 	mrsSidebar := m.renderMRsSidebarSection(width, mrsContentHeight, branches)
@@ -199,6 +168,41 @@ func (m model) renderQuadSidebar(width int, availableHeight int) string {
 	sourceBranchSidebar := m.renderSourceBranchSidebarSection(width, sourceBranchContentHeight)
 
 	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar, sourceBranchSidebar)
+}
+
+// renderQuintSidebar renders MRs, Environment, Version, Source branch, and Env merge sidebars stacked vertically
+func (m model) renderQuintSidebar(width int, availableHeight int) string {
+	var branches []string
+	if m.releaseState != nil && len(m.releaseState.MRBranches) > 0 {
+		branches = m.releaseState.MRBranches
+	} else {
+		items := m.list.Items()
+		for _, item := range items {
+			if mr, ok := item.(mrListItem); ok {
+				if m.selectedMRs[mr.MR().IID] {
+					branches = append(branches, mr.MR().SourceBranch)
+				}
+			}
+		}
+	}
+
+	totalContentHeight := availableHeight - 10
+
+	otherCount := 4 // env, version, source branch, env merge
+	otherHeight := totalContentHeight / (otherCount + 1)
+	mrsContentHeight := totalContentHeight - otherCount*otherHeight
+	envContentHeight := otherHeight
+	versionContentHeight := otherHeight
+	sourceBranchContentHeight := otherHeight
+	envMergeContentHeight := otherHeight
+
+	mrsSidebar := m.renderMRsSidebarSection(width, mrsContentHeight, branches)
+	envSidebar := m.renderEnvSidebarSection(width, envContentHeight)
+	versionSidebar := m.renderVersionSidebarSection(width, versionContentHeight)
+	sourceBranchSidebar := m.renderSourceBranchSidebarSection(width, sourceBranchContentHeight)
+	envMergeSidebar := m.renderEnvMergeSidebarSection(width, envMergeContentHeight)
+
+	return lipgloss.JoinVertical(lipgloss.Left, mrsSidebar, envSidebar, versionSidebar, sourceBranchSidebar, envMergeSidebar)
 }
 
 // renderSourceBranchSidebarSection renders the Source branch sidebar block with border
@@ -267,7 +271,7 @@ func (m model) renderSourceBranchSidebarStatus() string {
 func (m model) renderRootMergeSidebarSection(width int, contentHeight int) string {
 	var sb strings.Builder
 
-	sb.WriteString(envTitleStepStyle.Render("[5]") +
+	sb.WriteString(envTitleStepStyle.Render("[6]") +
 		envTitleStyle.Render(" Root merge "))
 	sb.WriteString("\n\n")
 
