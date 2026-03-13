@@ -186,9 +186,25 @@ Release state is automatically saved to `~/.relix/release.json` after each succe
 
 ## 10. Release History
 
-Access release history from the Home screen by pressing **`h`**. The history list shows all past releases with their date, version, target environment, and status (completed or aborted).
+Access release history from the Home screen by pressing **`h`**. The history list shows all past releases with their tag, target environment, date, and MR count. Completed releases are marked with a green dot, aborted ones with a red dot.
 
-Select a release to view full details including terminal output, MR metadata (URLs, IIDs, commit SHAs), and the complete release configuration.
+<img width="800" height="auto" alt="Release history list with tags, environments, and dates" src="../screens/history-list.png" />
+
+Select a release to view full details. The detail view has three tabs:
+
+- **MRs** -- list of all MR branches included in the release. MR details are loaded on demand -- select a branch and press `r` to fetch its description, diff stats, and commits.
+
+<img width="800" height="auto" alt="History detail - MRs tab loading details" src="../screens/history-detail-mrs-loading.png" />
+
+<img width="800" height="auto" alt="History detail - MRs tab with branch list and MR details" src="../screens/history-detail-mrs.png" />
+
+- **Meta** -- release metadata including date, environment, version, tag, status, branch names, and MR URL
+
+<img width="800" height="auto" alt="History detail - Meta tab with release metadata" src="../screens/history-detail-meta.png" />
+
+- **Logs** -- full terminal output captured during the release execution
+
+<img width="800" height="auto" alt="History detail - Logs tab with terminal output" src="../screens/history-detail-logs.png" />
 
 ### Key Bindings
 
@@ -199,6 +215,7 @@ Select a release to view full details including terminal output, MR metadata (UR
 | `Space` | Toggle selection (for bulk deletion) |
 | `o` | Open the release MR in your browser |
 | `d` | Delete selected history entries |
+| `H` / `L` | Switch between MRs / Meta / Logs tabs |
 
 ---
 
