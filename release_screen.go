@@ -797,7 +797,11 @@ func (m model) renderReleaseButtons(width int) string {
 				style = buttonStyle
 			}
 		case ReleaseButtonPushRoot:
-			label = "Push root branches"
+			if m.releaseState != nil && m.releaseState.RootMerge {
+				label = "Push root branches"
+			} else {
+				label = "Continue"
+			}
 			if isFocused {
 				style = buttonActiveStyle
 			} else {

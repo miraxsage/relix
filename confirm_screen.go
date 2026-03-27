@@ -279,7 +279,11 @@ func (m model) renderConfirmPreparing(width int, height int) string {
 	highlightStyle := lipgloss.NewStyle().Foreground(currentTheme.AccentForeground).Background(currentTheme.Accent)
 
 	var sb strings.Builder
-	sb.WriteString(textStyle.Render("We are almost ready to release ") + envStyle.Render(version) + textStyle.Render(" of selected MRs to ") + envStyle.Render(envName) + textStyle.Render(" environment,"))
+	mrSuffix := " of selected MRs"
+	if len(m.selectedMRs) == 0 {
+		mrSuffix = ""
+	}
+	sb.WriteString(textStyle.Render("We are almost ready to release ") + envStyle.Render(version) + textStyle.Render(mrSuffix+" to ") + envStyle.Render(envName) + textStyle.Render(" environment,"))
 	sb.WriteString("\n")
 	sb.WriteString(textStyle.Render("but there are some ") + highlightStyle.Render(" preparing of important details ") + textStyle.Render(":"))
 	sb.WriteString("\n\n")
@@ -337,25 +341,54 @@ func (m model) renderConfirmMarkdown(width int) string {
 	// Build tag name
 	tagName := fmt.Sprintf("%s-%s-v%d", strings.ToLower(envName), version, vNumber)
 
-	// Build step 4-5 and subsequent numbering based on env merge mode
-	step4And5 := ""
-	pushStepNum := 6
-	mrStepNum := 7
-	if m.envMergeSelection == 1 {
-		// Regular merge mode
-		step4And5 = fmt.Sprintf(`4. Merge **%s** to **release/rpb-%s-%s** via regular git merge (may require ~~conflict resolution~~)`,
-			sourceBranch, version, envBranch)
-		pushStepNum = 5
-		mrStepNum = 6
-	} else {
-		// Squash merge mode (default)
-		step4And5 = fmt.Sprintf(`4. Copy new composed MRs' content from **%s** via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number **v%d** from previous within version **%s**
+	hasMRs := len(m.selectedMRs) > 0
 
-5. Exclude from release commit files matching patterns from app settings (restore from env branch or remove)`,
-			sourceBranch, version, envBranch, vNumber, version)
+	// Build steps with dynamic numbering (step 1 is always the cumulative branch)
+	stepNum := 2
+
+	// Step: merge MR branches (only when MRs are selected)
+	mergeStep := ""
+	if hasMRs {
+		mergeStep = fmt.Sprintf("\n\n%d. Merge selected MRs branches to it and ~~resolve conflicts~~ with your participation", stepNum)
+		stepNum++
 	}
 
-	// Build step 8-9 based on root merge selection (with dynamic numbering)
+	// Step: create env release branch
+	envStep := fmt.Sprintf(`%d. Create environment release branch **release/rpb-%s-%s** from current **%s**`, stepNum, version, envBranch, envBranch)
+	stepNum++
+
+	// Step: copy content / merge
+	step4And5 := ""
+	if m.envMergeSelection == 1 {
+		// Regular merge mode
+		step4And5 = fmt.Sprintf(`%d. Merge **%s** to **release/rpb-%s-%s** via regular git merge (may require ~~conflict resolution~~)`,
+			stepNum, sourceBranch, version, envBranch)
+		stepNum++
+	} else {
+		// Squash merge mode (default)
+		copyDesc := "Copy new composed MRs' content"
+		if !hasMRs {
+			copyDesc = fmt.Sprintf("Copy **%s** content", sourceBranch)
+		} else {
+			copyDesc = fmt.Sprintf("Copy new composed MRs' content from **%s**", sourceBranch)
+		}
+		step4And5 = fmt.Sprintf(`%d. %s via `+"`git checkout -- .`"+` to **release/rpb-%s-%s** as a new independent ordinal commit with its next number **v%d** from previous within version **%s**
+
+%d. Exclude from release commit files matching patterns from app settings (restore from env branch or remove)`,
+			stepNum, copyDesc, version, envBranch, vNumber, version,
+			stepNum+1)
+		stepNum += 2
+	}
+
+	// Step: push env branch
+	pushStep := fmt.Sprintf(`%d. ~~Confirm~~ and push **release/rpb-%s-%s** to remote`, stepNum, version, envBranch)
+	stepNum++
+
+	// Step: create MR
+	mrStep := fmt.Sprintf(`%d. Create new merge request from **release/rpb-%s-%s** to **%s**`, stepNum, version, envBranch, envBranch)
+	stepNum++
+
+	// Steps: open MR, push root branches
 	step8And9 := ""
 	if m.rootMergeSelection {
 		step8And9 = fmt.Sprintf(`%d. Open new environment MR in browser for manual approval and pipeline execution
@@ -363,29 +396,35 @@ func (m model) renderConfirmMarkdown(width int) string {
 %d. ~~Confirm~~ and [ merge ]()**%s** to **root**, tag **root** as **%s** and push it to remote
 
 %d. [ Merge ]()**root** to **develop** and push it to remote`,
-			mrStepNum+1, mrStepNum+2, sourceBranch, tagName, mrStepNum+3)
+			stepNum, stepNum+1, sourceBranch, tagName, stepNum+2)
 	} else {
 		step8And9 = fmt.Sprintf(`%d. Open new environment MR in browser for manual approval and pipeline execution
 
 %d. ~~Confirm~~ and tag **%s** as **%s**, then push it to remote`,
-			mrStepNum+1, mrStepNum+2, sourceBranch, tagName)
+			stepNum, stepNum+1, sourceBranch, tagName)
 	}
 
-	markdown := fmt.Sprintf(`[ We are ready ]()to release **%s v%d** of selected MRs to **%s** environment!
+	// Build header
+	header := ""
+	if hasMRs {
+		header = fmt.Sprintf(`[ We are ready ]()to release **%s v%d** of selected MRs to **%s** environment!`, version, vNumber, envName)
+	} else {
+		header = fmt.Sprintf(`[ We are ready ]()to release **%s v%d** to **%s** environment!`, version, vNumber, envName)
+	}
+
+	markdown := fmt.Sprintf(`%s
 
 This release will go through the following steps:
 
-%s
-
-2. Merge selected MRs branches to it and ~~resolve conflicts~~ with your participation
-
-3. Create environment release branch **release/rpb-%s-%s** from current **%s**
+%s%s
 
 %s
 
-%d. ~~Confirm~~ and push **release/rpb-%s-%s** to remote
+%s
 
-%d. Create new merge request from **release/rpb-%s-%s** to **%s**
+%s
+
+%s
 
 %s
 
@@ -393,12 +432,12 @@ This release will go through the following steps:
 
 If you agree, press enter and release it.
 `,
-		version, vNumber, envName,
-		step1Text,
-		version, envBranch, envBranch,
+		header,
+		step1Text, mergeStep,
+		envStep,
 		step4And5,
-		pushStepNum, version, envBranch,
-		mrStepNum, version, envBranch, envBranch,
+		pushStep,
+		mrStep,
 		step8And9,
 		sourceBranchNB, versionNB, envBranchNB,
 	)
